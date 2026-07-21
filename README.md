@@ -2,6 +2,19 @@
 
 基于 Java 21、Spring Boot、MyBatis-Plus、MySQL 和 Redis 的模块化后端工程。
 
+## 版本管理
+
+后端使用 GitHub 仓库的独立 `dev` 分支，与小程序 `mini-program` 分支互不共享文件历史。
+
+只克隆后端代码：
+
+```bash
+git clone --single-branch --branch dev \
+  git@github.com:15939509703/jizhang.git jizhang-server
+```
+
+进入后端目录后，正常执行 `git pull` 只会更新 `dev` 分支。
+
 ## 当前功能
 
 - 微信小程序`code2session`真实登录。

@@ -1,0 +1,21 @@
+{
+  "pages": [
+    "pages/login/login",
+    "pages/home/home",
+    "pages/record/record",
+    "pages/bills/bills",
+    "pages/stats/stats",
+    "pages/budget/budget",
+    "pages/accounts/accounts",
+    "pages/books/books",
+    "pages/settings/settings"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTitleText": "记账小程序",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f7fb"
+  },
+  "sitemapLocation": "sitemap.json"
+}

@@ -1,0 +1,23 @@
+<view class="page">
+  <view class="page-title">账单列表</view>
+  <block wx:for="{{groupedBills}}" wx:key="dateLabel" wx:for-item="group">
+    <view class="panel" style="margin-top: 24rpx;">
+      <view class="section-title"><text>{{group.dateLabel}}</text><text class="muted">合计 {{group.totalText}}</text></view>
+      <block wx:for="{{group.items}}" wx:key="id" wx:for-item="bill">
+        <view class="list-item">
+          <view class="row-between">
+            <view>
+              <view class="item-title">{{bill.title}}</view>
+              <view class="item-desc">{{bill.category}} · {{bill.account}}</view>
+            </view>
+            <view>
+              <view class="money {{bill.amountClass}}">{{bill.amountSignedText}}</view>
+              <view class="muted" data-id="{{bill.id}}" bindtap="handleDelete">删除</view>
+            </view>
+          </view>
+        </view>
+      </block>
+    </view>
+  </block>
+  <app-nav current="bills" items="{{navItems}}" />
+</view>

@@ -1,0 +1,4 @@
+/* home */
+.summary-loading {
+  opacity: 0.55;
+}

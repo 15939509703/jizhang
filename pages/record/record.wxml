@@ -1,0 +1,9 @@
+<view class="page">
+  <view class="page-title">记一笔</view>
+  <view class="panel" style="margin-top: 24rpx;">
+    <view class="field"><text class="field-label">金额</text><input class="field-value" type="digit" value="{{form.amount}}" data-field="amount" bindinput="handleInput" /></view>
+    <view class="field"><text class="field-label">标题</text><input class="field-value" value="{{form.title}}" data-field="title" bindinput="handleInput" /></view>
+    <view style="margin-top: 24rpx;"><button class="btn btn-primary btn-block" bindtap="handleSave">保存</button></view>
+  </view>
+  <app-nav current="record" items="{{navItems}}" />
+</view>

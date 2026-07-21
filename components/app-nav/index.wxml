@@ -1,0 +1,8 @@
+<view class="app-nav">
+  <block wx:for="{{displayItems}}" wx:key="key">
+    <button class="app-nav-item {{item.activeClass}}" data-key="{{item.key}}" data-url="{{item.url}}" bindtap="handleTap">
+      <text class="app-nav-icon">{{item.icon}}</text>
+      <text class="app-nav-label">{{item.label}}</text>
+    </button>
+  </block>
+</view>

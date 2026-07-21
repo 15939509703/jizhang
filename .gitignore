@@ -1,0 +1,14 @@
+.idea/
+*.iml
+**/target/
+.DS_Store
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+
+# Runtime output
+*.log
+*.pid
+logs/

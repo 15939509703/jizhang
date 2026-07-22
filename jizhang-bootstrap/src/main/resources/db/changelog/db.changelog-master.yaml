@@ -1,0 +1,21 @@
+databaseChangeLog:
+  - changeSet:
+      id: jizhang-1.0.0-schema
+      author: jizhang
+      changes:
+        - sqlFile:
+            path: 001-schema.sql
+            relativeToChangelogFile: true
+            encoding: UTF-8
+            splitStatements: true
+            stripComments: false
+  - changeSet:
+      id: jizhang-1.0.0-base-data
+      author: jizhang
+      changes:
+        - sqlFile:
+            path: 002-base-data.sql
+            relativeToChangelogFile: true
+            encoding: UTF-8
+            splitStatements: true
+            stripComments: false

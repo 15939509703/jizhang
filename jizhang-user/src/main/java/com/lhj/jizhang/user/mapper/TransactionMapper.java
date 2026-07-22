@@ -2,11 +2,13 @@ package com.lhj.jizhang.user.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.lhj.jizhang.user.entity.TransactionEntity;
+import com.lhj.jizhang.user.model.CategoryExpenseAggregate;
 import com.lhj.jizhang.user.model.TransactionSummaryAggregate;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public interface TransactionMapper extends BaseMapper<TransactionEntity> {
     @Select("SELECT * FROM fin_transaction WHERE id = #{id} FOR UPDATE")
@@ -23,6 +25,24 @@ public interface TransactionMapper extends BaseMapper<TransactionEntity> {
               AND happened_at < #{endAt}
             """)
     TransactionSummaryAggregate selectSummary(
+            @Param("bookId") Long bookId,
+            @Param("startAt") LocalDateTime startAt,
+            @Param("endAt") LocalDateTime endAt
+    );
+
+    @Select("""
+            SELECT
+                category_id,
+                COALESCE(SUM(amount), 0) AS expense_amount
+            FROM fin_transaction
+            WHERE book_id = #{bookId}
+              AND transaction_type = 'EXPENSE'
+              AND status = 'EFFECTIVE'
+              AND happened_at >= #{startAt}
+              AND happened_at < #{endAt}
+            GROUP BY category_id
+            """)
+    List<CategoryExpenseAggregate> selectExpenseByCategory(
             @Param("bookId") Long bookId,
             @Param("startAt") LocalDateTime startAt,
             @Param("endAt") LocalDateTime endAt

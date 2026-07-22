@@ -1,1 +1,73 @@
-/* record */
+.type-switch {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8rpx;
+  margin: 24rpx 0;
+  padding: 6rpx;
+  border: 1rpx solid #dbe2ea;
+  border-radius: 16rpx;
+  background: #eef2f7;
+}
+
+.type-button {
+  min-height: 68rpx;
+  border-radius: 12rpx;
+  background: transparent;
+  color: #64748b;
+  font-size: 26rpx;
+  line-height: 68rpx;
+}
+
+.type-button.active {
+  background: #ffffff;
+  color: #2e6de9;
+  font-weight: 500;
+}
+
+.record-form {
+  margin-top: 0;
+}
+
+.amount-row {
+  display: flex;
+  align-items: baseline;
+  padding: 12rpx 4rpx 28rpx;
+}
+
+.currency-mark {
+  color: #334155;
+  font-size: 40rpx;
+}
+
+.amount-input {
+  width: 100%;
+  margin-left: 12rpx;
+  color: #111827;
+  font-size: 64rpx;
+  font-weight: 500;
+}
+
+.date-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+.field.compact {
+  min-width: 0;
+}
+
+.note-input {
+  width: 100%;
+  min-height: 150rpx;
+  margin-top: 16rpx;
+  padding: 20rpx;
+  border: 1rpx solid #dbe2ea;
+  border-radius: 16rpx;
+  background: #ffffff;
+}
+
+.save-button {
+  margin-top: 24rpx;
+}

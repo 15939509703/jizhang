@@ -1,1 +1,47 @@
-/* books */
+.add-button {
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  border: 1rpx solid #2e6de9;
+  border-radius: 14rpx;
+  background: #ffffff;
+  color: #2e6de9;
+  font-size: 24rpx;
+  line-height: 64rpx;
+}
+
+.create-panel,
+.book-item {
+  margin-top: 20rpx;
+}
+
+.section-heading {
+  margin-bottom: 18rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.create-button {
+  margin-top: 20rpx;
+}
+
+.book-main {
+  min-width: 0;
+  padding-right: 20rpx;
+}
+
+.book-state {
+  flex-shrink: 0;
+  color: #64748b;
+  font-size: 24rpx;
+}
+
+.book-state.current {
+  color: #2e6de9;
+  font-weight: 500;
+}
+
+.empty-state {
+  padding: 80rpx 24rpx;
+  color: #94a3b8;
+  text-align: center;
+}

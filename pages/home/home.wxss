@@ -1,4 +1,40 @@
-/* home */
+.summary-panel {
+  margin-top: 24rpx;
+}
+
 .summary-loading {
   opacity: 0.55;
+}
+
+.record-entry {
+  margin-top: 20rpx;
+}
+
+.section-action {
+  color: #2e6de9;
+  font-size: 24rpx;
+}
+
+.recent-panel {
+  padding-top: 4rpx;
+  padding-bottom: 4rpx;
+}
+
+.bill-main {
+  min-width: 0;
+  padding-right: 20rpx;
+}
+
+.empty-state {
+  padding: 48rpx 0;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.budget-row + .budget-row {
+  margin-top: 24rpx;
+}
+
+.budget-row .progress {
+  margin-top: 12rpx;
 }

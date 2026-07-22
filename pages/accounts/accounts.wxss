@@ -1,1 +1,39 @@
-/* accounts */
+.add-button {
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  border: 1rpx solid #2e6de9;
+  border-radius: 14rpx;
+  background: #ffffff;
+  color: #2e6de9;
+  font-size: 24rpx;
+  line-height: 64rpx;
+}
+
+.balance-panel {
+  margin-top: 24rpx;
+}
+
+.balance-panel .money {
+  margin-top: 10rpx;
+}
+
+.create-panel,
+.account-item {
+  margin-top: 20rpx;
+}
+
+.section-heading {
+  margin-bottom: 18rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.create-button {
+  margin-top: 20rpx;
+}
+
+.empty-state {
+  padding: 80rpx 24rpx;
+  color: #94a3b8;
+  text-align: center;
+}

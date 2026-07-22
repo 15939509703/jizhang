@@ -6,21 +6,37 @@
     </view>
     <view class="tag">{{monthLabel}}</view>
   </view>
-  <view class="panel" style="margin-top: 24rpx;">
+  <view class="panel summary-panel">
     <view class="row-between {{summaryLoading ? 'summary-loading' : ''}}">
-      <view>
-        <view class="muted">收入</view>
-        <view class="money success">{{summary.incomeText}}</view>
-      </view>
-      <view>
-        <view class="muted">支出</view>
-        <view class="money danger">{{summary.expenseText}}</view>
-      </view>
-      <view>
-        <view class="muted">结余</view>
-        <view class="money primary">{{summary.balanceText}}</view>
-      </view>
+      <view><view class="muted">收入</view><view class="money success">{{summary.incomeText}}</view></view>
+      <view><view class="muted">支出</view><view class="money danger">{{summary.expenseText}}</view></view>
+      <view><view class="muted">结余</view><view class="money primary">{{summary.balanceText}}</view></view>
     </view>
+  </view>
+
+  <button class="btn btn-primary btn-block record-entry" bindtap="goRecord">记一笔</button>
+
+  <view class="section-title"><text>最近账单</text><text class="section-action" bindtap="goBills">全部账单</text></view>
+  <view class="panel recent-panel">
+    <view wx:if="{{!summaryLoading && !recentBills.length}}" class="empty-state">暂无账单</view>
+    <block wx:for="{{recentBills}}" wx:key="id">
+      <view class="list-item">
+        <view class="row-between">
+          <view class="bill-main"><view class="item-title">{{item.title}}</view><view class="item-desc">{{item.category}} · {{item.account}}</view></view>
+          <view class="money {{item.amountClass}}">{{item.amountSignedText}}</view>
+        </view>
+      </view>
+    </block>
+  </view>
+
+  <view wx:if="{{budgets.length}}" class="section-title"><text>预算进度</text></view>
+  <view wx:if="{{budgets.length}}" class="panel">
+    <block wx:for="{{budgets}}" wx:key="id">
+      <view class="budget-row">
+        <view class="row-between"><text>{{item.name}}</text><text class="muted">{{item.percent}}%</text></view>
+        <view class="progress"><view class="progress-bar {{item.status}}" style="width: {{item.percent > 100 ? 100 : item.percent}}%;"></view></view>
+      </view>
+    </block>
   </view>
   <app-nav current="home" items="{{navItems}}" />
 </view>

@@ -1,23 +1,41 @@
 <view class="page">
   <view class="page-title">账单列表</view>
+  <scroll-view class="filter-bar" scroll-x enhanced show-scrollbar="false">
+    <view class="filter-content">
+      <button
+        wx:for="{{typeOptions}}"
+        wx:key="value"
+        class="filter-button {{activeType === item.value ? 'active' : ''}}"
+        data-type="{{item.value}}"
+        bindtap="handleTypeChange"
+      >{{item.label}}</button>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{!loading && !groupedBills.length}}" class="empty-state">当前筛选条件下暂无账单</view>
   <block wx:for="{{groupedBills}}" wx:key="dateLabel" wx:for-item="group">
-    <view class="panel" style="margin-top: 24rpx;">
-      <view class="section-title"><text>{{group.dateLabel}}</text><text class="muted">合计 {{group.totalText}}</text></view>
-      <block wx:for="{{group.items}}" wx:key="id" wx:for-item="bill">
-        <view class="list-item">
-          <view class="row-between">
-            <view>
-              <view class="item-title">{{bill.title}}</view>
-              <view class="item-desc">{{bill.category}} · {{bill.account}}</view>
-            </view>
-            <view>
-              <view class="money {{bill.amountClass}}">{{bill.amountSignedText}}</view>
-              <view class="muted" data-id="{{bill.id}}" bindtap="handleDelete">删除</view>
+    <view class="bill-group">
+      <view class="section-title"><text>{{group.dateLabel}}</text><text class="muted">{{group.totalText}}</text></view>
+      <view class="panel">
+        <block wx:for="{{group.items}}" wx:key="id" wx:for-item="bill">
+          <view class="list-item">
+            <view class="row-between">
+              <view class="bill-main">
+                <view class="item-title">{{bill.title}}</view>
+                <view class="item-desc">{{bill.category}} · {{bill.account}}</view>
+                <view class="item-time">{{bill.dateText}}</view>
+              </view>
+              <view class="bill-side">
+                <view class="money {{bill.amountClass}}">{{bill.amountSignedText}}</view>
+                <button class="void-button" data-id="{{bill.id}}" bindtap="handleVoid">作废</button>
+              </view>
             </view>
           </view>
-        </view>
-      </block>
+        </block>
+      </view>
     </view>
   </block>
+  <view wx:if="{{loading || loadingMore}}" class="load-state">加载中...</view>
+  <view wx:elif="{{groupedBills.length && !hasMore}}" class="load-state">没有更多账单</view>
   <app-nav current="bills" items="{{navItems}}" />
 </view>

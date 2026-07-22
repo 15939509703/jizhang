@@ -1,9 +1,59 @@
 <view class="page">
   <view class="page-title">记一笔</view>
-  <view class="panel" style="margin-top: 24rpx;">
-    <view class="field"><text class="field-label">金额</text><input class="field-value" type="digit" value="{{form.amount}}" data-field="amount" bindinput="handleInput" /></view>
-    <view class="field"><text class="field-label">标题</text><input class="field-value" value="{{form.title}}" data-field="title" bindinput="handleInput" /></view>
-    <view style="margin-top: 24rpx;"><button class="btn btn-primary btn-block" bindtap="handleSave">保存</button></view>
+
+  <view class="type-switch" aria-label="账单类型">
+    <button
+      wx:for="{{typeOptions}}"
+      wx:key="value"
+      class="type-button {{form.transactionType === item.value ? 'active' : ''}}"
+      data-type="{{item.value}}"
+      bindtap="handleTypeChange"
+    >{{item.label}}</button>
+  </view>
+
+  <view class="panel record-form">
+    <view class="amount-row">
+      <text class="currency-mark">¥</text>
+      <input class="amount-input" type="digit" value="{{form.amount}}" placeholder="0.00" data-field="amount" bindinput="handleInput" />
+    </view>
+
+    <view class="field">
+      <text class="field-label">标题</text>
+      <input class="field-value" value="{{form.title}}" maxlength="128" placeholder="这笔钱用在了哪里" data-field="title" bindinput="handleInput" />
+    </view>
+
+    <picker wx:if="{{form.transactionType !== 'TRANSFER'}}" range="{{categories}}" range-key="name" value="{{categoryIndex}}" data-field="categoryIndex" bindchange="handlePickerChange">
+      <view class="field">
+        <text class="field-label">分类</text>
+        <text class="field-value">{{categories.length ? categories[categoryIndex].name : '暂无可用分类'}}</text>
+      </view>
+    </picker>
+
+    <picker range="{{accounts}}" range-key="name" value="{{accountIndex}}" data-field="accountIndex" bindchange="handlePickerChange">
+      <view class="field">
+        <text class="field-label">{{form.transactionType === 'TRANSFER' ? '转出账户' : '账户'}}</text>
+        <text class="field-value">{{accounts.length ? accounts[accountIndex].name : '暂无可用账户'}}</text>
+      </view>
+    </picker>
+
+    <picker wx:if="{{form.transactionType === 'TRANSFER'}}" range="{{accounts}}" range-key="name" value="{{targetAccountIndex}}" data-field="targetAccountIndex" bindchange="handlePickerChange">
+      <view class="field">
+        <text class="field-label">转入账户</text>
+        <text class="field-value">{{accounts.length ? accounts[targetAccountIndex].name : '暂无可用账户'}}</text>
+      </view>
+    </picker>
+
+    <view class="date-fields">
+      <picker mode="date" value="{{form.date}}" bindchange="handleDateChange">
+        <view class="field compact"><text class="field-label">日期</text><text class="field-value">{{form.date}}</text></view>
+      </picker>
+      <picker mode="time" value="{{form.time}}" bindchange="handleTimeChange">
+        <view class="field compact"><text class="field-label">时间</text><text class="field-value">{{form.time}}</text></view>
+      </picker>
+    </view>
+
+    <textarea class="note-input" value="{{form.note}}" maxlength="1000" placeholder="添加备注（选填）" data-field="note" bindinput="handleInput" />
+    <button class="btn btn-primary btn-block save-button" loading="{{submitting}}" disabled="{{loading || submitting}}" bindtap="handleSave">保存账单</button>
   </view>
   <app-nav current="record" items="{{navItems}}" />
 </view>

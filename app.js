@@ -223,8 +223,21 @@ const dataStore = {
     return getStorage(STORAGE_KEYS.ACCESS_TOKEN, '')
   },
 
+  getRefreshToken() {
+    return getStorage(STORAGE_KEYS.REFRESH_TOKEN, '')
+  },
+
+  saveTokens(tokens) {
+    setStorage(STORAGE_KEYS.ACCESS_TOKEN, tokens.accessToken)
+    setStorage(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken)
+  },
+
   getDefaultBook() {
     return getStorage(STORAGE_KEYS.DEFAULT_BOOK, null)
+  },
+
+  setDefaultBook(book) {
+    setStorage(STORAGE_KEYS.DEFAULT_BOOK, book)
   },
 
   hasValidLocalSession() {

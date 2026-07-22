@@ -1,1 +1,65 @@
-/* stats */
+.summary-panel {
+  margin-top: 24rpx;
+}
+
+.loading {
+  opacity: 0.55;
+}
+
+.trend-chart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10rpx;
+  height: 260rpx;
+}
+
+.trend-item {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+}
+
+.trend-track {
+  display: flex;
+  width: 28rpx;
+  height: 210rpx;
+  align-items: flex-end;
+  border-radius: 8rpx;
+  background: #eef2f7;
+  overflow: hidden;
+}
+
+.trend-bar {
+  width: 100%;
+  min-height: 4rpx;
+  border-radius: 8rpx 8rpx 0 0;
+  background: #d9534f;
+}
+
+.trend-label {
+  margin-top: 10rpx;
+  color: #64748b;
+  font-size: 20rpx;
+}
+
+.category-row + .category-row {
+  margin-top: 26rpx;
+}
+
+.category-meta {
+  gap: 18rpx;
+  margin-top: 12rpx;
+  color: #64748b;
+  font-size: 22rpx;
+}
+
+.category-meta .progress {
+  flex: 1;
+}
+
+.empty-state {
+  padding: 48rpx 0;
+  color: #94a3b8;
+  text-align: center;
+}

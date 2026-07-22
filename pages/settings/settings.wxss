@@ -1,1 +1,21 @@
-/* settings */
+.manage-panel {
+  padding: 0 24rpx;
+}
+
+.manage-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 112rpx;
+  border-bottom: 1rpx solid #eef2f7;
+}
+
+.manage-item:last-child {
+  border-bottom: 0;
+}
+
+.manage-arrow {
+  color: #94a3b8;
+  font-size: 42rpx;
+  line-height: 1;
+}

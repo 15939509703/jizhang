@@ -1,10 +1,29 @@
 <view class="page">
   <view class="page-title">统计分析</view>
-  <view class="panel" style="margin-top: 24rpx;">
+  <view class="panel summary-panel {{loading ? 'loading' : ''}}">
     <view class="row-between">
       <view><view class="muted">收入</view><view class="money success">{{summary.incomeText}}</view></view>
       <view><view class="muted">支出</view><view class="money danger">{{summary.expenseText}}</view></view>
       <view><view class="muted">结余</view><view class="money primary">{{summary.balanceText}}</view></view>
+    </view>
+  </view>
+
+  <view class="section-title"><text>近 7 天支出</text></view>
+  <view class="panel trend-panel">
+    <view class="trend-chart">
+      <view wx:for="{{trendSeries}}" wx:key="key" class="trend-item">
+        <view class="trend-track"><view class="trend-bar" style="height: {{item.height}}%;"></view></view>
+        <text class="trend-label">{{item.key}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="section-title"><text>支出分类</text></view>
+  <view class="panel category-panel">
+    <view wx:if="{{!loading && !expenseSummary.length}}" class="empty-state">本月暂无支出</view>
+    <view wx:for="{{expenseSummary}}" wx:key="name" class="category-row">
+      <view class="row-between"><text>{{item.name}}</text><text class="money">{{item.valueText}}</text></view>
+      <view class="row-between category-meta"><view class="progress"><view class="progress-bar" style="width: {{item.percent}}%;"></view></view><text>{{item.percent}}%</text></view>
     </view>
   </view>
   <app-nav current="stats" items="{{navItems}}" />

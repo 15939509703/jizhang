@@ -8,6 +8,10 @@ Page({
     this.setData({ navItems: data.navItems, user: data.user })
   },
 
+  handleManageNavigate(event) {
+    wx.navigateTo({ url: event.currentTarget.dataset.url })
+  },
+
   handleLogout() {
     getApp().dataStore.clearAuthSession()
     getApp().globalData.userInfo = null

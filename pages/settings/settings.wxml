@@ -1,6 +1,19 @@
 <view class="page">
   <view class="page-title">设置</view>
   <view class="panel" style="margin-top: 24rpx;"><view class="item-title">{{user.nickName}}</view><view class="item-desc">微信已登录 · 云端同步开启</view></view>
+
+  <view class="section-title"><text>记账管理</text></view>
+  <view class="panel manage-panel">
+    <view class="manage-item" data-url="/pages/accounts/accounts" bindtap="handleManageNavigate">
+      <view><view class="item-title">账户管理</view><view class="item-desc">管理资金账户与余额</view></view>
+      <text class="manage-arrow">›</text>
+    </view>
+    <view class="manage-item" data-url="/pages/books/books" bindtap="handleManageNavigate">
+      <view><view class="item-title">账本管理</view><view class="item-desc">新建或切换当前账本</view></view>
+      <text class="manage-arrow">›</text>
+    </view>
+  </view>
+
   <view style="margin-top: 24rpx;"><button class="btn btn-primary btn-block" bindtap="handleLogout">退出登录</button></view>
   <app-nav current="settings" items="{{navItems}}" />
 </view>

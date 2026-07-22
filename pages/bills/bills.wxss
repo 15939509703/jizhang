@@ -1,1 +1,71 @@
-/* bills */
+.filter-bar {
+  width: 100%;
+  margin-top: 24rpx;
+  white-space: nowrap;
+}
+
+.filter-content {
+  display: inline-flex;
+  gap: 12rpx;
+}
+
+.filter-button {
+  min-width: 112rpx;
+  min-height: 64rpx;
+  padding: 0 24rpx;
+  border: 1rpx solid #dbe2ea;
+  border-radius: 14rpx;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 24rpx;
+  line-height: 64rpx;
+}
+
+.filter-button.active {
+  border-color: #2e6de9;
+  background: #2e6de9;
+  color: #ffffff;
+}
+
+.bill-group {
+  margin-top: 20rpx;
+}
+
+.bill-group .section-title {
+  margin-top: 0;
+}
+
+.bill-main {
+  min-width: 0;
+  padding-right: 20rpx;
+}
+
+.bill-side {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.item-time {
+  margin-top: 6rpx;
+  color: #94a3b8;
+  font-size: 22rpx;
+}
+
+.void-button {
+  min-height: 48rpx;
+  margin-top: 8rpx;
+  padding: 0;
+  background: transparent;
+  color: #d9534f;
+  font-size: 22rpx;
+  line-height: 48rpx;
+  text-align: right;
+}
+
+.empty-state,
+.load-state {
+  padding: 80rpx 24rpx;
+  color: #94a3b8;
+  font-size: 24rpx;
+  text-align: center;
+}

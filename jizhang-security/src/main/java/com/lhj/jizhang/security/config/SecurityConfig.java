@@ -31,6 +31,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
                                 "/api/v1/auth/wechat/login",
+                                "/api/v1/auth/refresh",
                                 "/actuator/health",
                                 "/v3/api-docs/**",
                                 "/swagger-ui.html",

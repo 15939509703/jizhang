@@ -41,4 +41,31 @@ class TokenServiceTest {
         assertFalse(tokenPair.refreshToken().isBlank());
         verify(valueOperations).set(anyString(), eq("101:3"), eq(Duration.ofDays(30)));
     }
+
+    @Test
+    void shouldRotateRefreshToken() {
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.getAndDelete(anyString())).thenReturn("101:3");
+        TokenService tokenService = new TokenService(properties(), redisTemplate);
+
+        TokenPair tokenPair = tokenService.refresh("old-refresh-token");
+        AuthenticatedUser authenticatedUser = tokenService.parseAccessToken(tokenPair.accessToken());
+
+        assertEquals(101L, authenticatedUser.userId());
+        assertEquals(3, authenticatedUser.sessionVersion());
+        assertFalse(tokenPair.refreshToken().isBlank());
+        verify(valueOperations).getAndDelete(anyString());
+        verify(valueOperations).set(anyString(), eq("101:3"), eq(Duration.ofDays(30)));
+    }
+
+    private JwtProperties properties() {
+        return new JwtProperties(
+                "jizhang-test",
+                Base64.getEncoder().encodeToString("0123456789abcdef0123456789abcdef".getBytes()),
+                Duration.ofMinutes(30),
+                Duration.ofDays(30)
+        );
+    }
 }

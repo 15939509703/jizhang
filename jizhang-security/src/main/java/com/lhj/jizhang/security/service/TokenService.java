@@ -1,5 +1,7 @@
 package com.lhj.jizhang.security.service;
 
+import com.lhj.jizhang.common.exception.BusinessException;
+import com.lhj.jizhang.common.exception.ErrorCodes;
 import com.lhj.jizhang.security.config.JwtProperties;
 import com.lhj.jizhang.security.model.AuthenticatedUser;
 import com.lhj.jizhang.security.model.TokenPair;
@@ -8,6 +10,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -55,6 +58,23 @@ public class TokenService {
         return new AuthenticatedUser(Long.valueOf(claims.getSubject()), claims.get("sv", Integer.class));
     }
 
+    public TokenPair refresh(String refreshToken) {
+        String key = REFRESH_TOKEN_PREFIX + sha256(refreshToken);
+        String tokenContext = redisTemplate.opsForValue().getAndDelete(key);
+        if (tokenContext == null) {
+            throw unauthorizedRefreshToken();
+        }
+        String[] parts = tokenContext.split(":", 2);
+        if (parts.length != 2) {
+            throw unauthorizedRefreshToken();
+        }
+        try {
+            return issue(Long.valueOf(parts[0]), Integer.valueOf(parts[1]));
+        } catch (NumberFormatException exception) {
+            throw unauthorizedRefreshToken();
+        }
+    }
+
     private String createAccessToken(Long userId, Integer sessionVersion, Instant issuedAt, Instant expiresAt) {
         return Jwts.builder()
                 .id(UUID.randomUUID().toString())
@@ -86,5 +106,9 @@ public class TokenService {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
+    }
+
+    private BusinessException unauthorizedRefreshToken() {
+        return new BusinessException(ErrorCodes.UNAUTHORIZED, "刷新令牌无效或已过期", HttpStatus.UNAUTHORIZED);
     }
 }

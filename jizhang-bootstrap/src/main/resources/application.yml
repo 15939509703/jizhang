@@ -35,6 +35,8 @@ mybatis-plus:
       id-type: auto
 
 app:
+  storage:
+    upload-dir: ${UPLOAD_DIR:./data/uploads}
   logging:
     http:
       include-body: ${HTTP_LOG_INCLUDE_BODY:true}

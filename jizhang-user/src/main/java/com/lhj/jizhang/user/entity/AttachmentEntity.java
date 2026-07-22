@@ -8,17 +8,20 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("fin_book_member")
-public class BookMemberEntity {
+@TableName("fin_attachment")
+public class AttachmentEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private Long bookId;
-    private Long userId;
-    private String role;
-    private String permissions;
+    private Long transactionId;
+    private String storageProvider;
+    private String objectKey;
+    private String fileName;
+    private String contentType;
+    private Long fileSize;
+    private String fileHash;
     private Integer status;
-    private Long invitedBy;
-    private LocalDateTime joinedTime;
     private String creator;
+    private LocalDateTime createdTime;
     private String modifier;
+    private LocalDateTime modifiedTime;
 }

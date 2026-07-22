@@ -34,4 +34,22 @@ public class BookAccessService {
         }
         return member;
     }
+
+    public BookMemberEntity requireAdmin(Long userId, Long bookId) {
+        BookMemberEntity member = requireMember(userId, bookId);
+        if (!"OWNER".equals(member.getRole()) && !"ADMIN".equals(member.getRole())) {
+            throw new BusinessException(ErrorCodes.BOOK_ACCESS_DENIED, "仅账本所有者或管理员可执行此操作",
+                    HttpStatus.FORBIDDEN);
+        }
+        return member;
+    }
+
+    public BookMemberEntity requireOwner(Long userId, Long bookId) {
+        BookMemberEntity member = requireMember(userId, bookId);
+        if (!"OWNER".equals(member.getRole())) {
+            throw new BusinessException(ErrorCodes.BOOK_ACCESS_DENIED, "仅账本所有者可执行此操作",
+                    HttpStatus.FORBIDDEN);
+        }
+        return member;
+    }
 }

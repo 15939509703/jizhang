@@ -26,6 +26,8 @@ public record TransactionCreateInDTO(
         String transactionType,
         @Schema(description = "分类ID，转账时不传", example = "1")
         Long categoryId,
+        @Schema(description = "复制来源账单ID", example = "10")
+        Long originalTransactionId,
         @Schema(description = "主账户ID", example = "1")
         @NotNull(message = "账户ID不能为空") Long accountId,
         @Schema(description = "转入账户ID，仅转账时必填", example = "2")

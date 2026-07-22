@@ -6,8 +6,10 @@ import com.lhj.jizhang.user.dto.TransactionCreateInDTO;
 import com.lhj.jizhang.user.dto.TransactionOutDTO;
 import com.lhj.jizhang.user.dto.TransactionPageOutDTO;
 import com.lhj.jizhang.user.dto.TransactionSummaryOutDTO;
+import com.lhj.jizhang.user.dto.TransactionUpdateInDTO;
 import com.lhj.jizhang.user.service.TransactionService;
 import com.lhj.jizhang.user.service.TransactionSummaryService;
+import com.lhj.jizhang.user.service.AttachmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -19,6 +21,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,13 +37,16 @@ import java.time.YearMonth;
 public class TransactionController {
     private final TransactionService transactionService;
     private final TransactionSummaryService transactionSummaryService;
+    private final AttachmentService attachmentService;
 
     public TransactionController(
             TransactionService transactionService,
-            TransactionSummaryService transactionSummaryService
+            TransactionSummaryService transactionSummaryService,
+            AttachmentService attachmentService
     ) {
         this.transactionService = transactionService;
         this.transactionSummaryService = transactionSummaryService;
+        this.attachmentService = attachmentService;
     }
 
     @Operation(summary = "新增账单", description = "新增支出、收入或转账账单，并同步更新账户余额")
@@ -64,6 +70,12 @@ public class TransactionController {
                     schema = @Schema(allowableValues = {"EFFECTIVE", "VOIDED", "REVERSED"}))
             @RequestParam(required = false) String status,
             @Parameter(description = "分类ID", example = "1") @RequestParam(required = false) Long categoryId,
+            @Parameter(description = "账户ID", example = "1") @RequestParam(required = false) Long accountId,
+            @Parameter(description = "最小金额", example = "10.00")
+            @RequestParam(required = false) java.math.BigDecimal minAmount,
+            @Parameter(description = "最大金额", example = "100.00")
+            @RequestParam(required = false) java.math.BigDecimal maxAmount,
+            @Parameter(description = "标题或备注关键词") @RequestParam(required = false) String keyword,
             @Parameter(description = "发生时间起点（ISO-8601）", example = "2026-07-01T00:00:00Z")
             @RequestParam(required = false) Instant startAt,
             @Parameter(description = "发生时间终点（ISO-8601）", example = "2026-08-01T00:00:00Z")
@@ -74,7 +86,26 @@ public class TransactionController {
             @RequestParam(required = false) Integer limit
     ) {
         return ApiResponse.success(transactionService.list(user.userId(), bookId, type, status, categoryId,
-                startAt, endAt, cursorId, limit));
+                accountId, minAmount, maxAmount, keyword, startAt, endAt, cursorId, limit));
+    }
+
+    @Operation(summary = "查询账单详情")
+    @GetMapping("/{id}")
+    public ApiResponse<TransactionOutDTO> get(
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long id
+    ) {
+        return ApiResponse.success(attachmentService.enrich(user.userId(), transactionService.get(user.userId(), id)));
+    }
+
+    @Operation(summary = "修改账单", description = "冲回旧账户分录后按新内容重建分录")
+    @PutMapping("/{id}")
+    public ApiResponse<TransactionOutDTO> update(
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long id,
+            @RequestBody @Valid TransactionUpdateInDTO input
+    ) {
+        return ApiResponse.success(transactionService.update(user.userId(), id, input));
     }
 
     @Operation(summary = "查询月度收支汇总", description = "按账本时区统计指定月份的有效收入、支出和结余")

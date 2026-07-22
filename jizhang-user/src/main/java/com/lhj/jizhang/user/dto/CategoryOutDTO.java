@@ -19,6 +19,10 @@ public record CategoryOutDTO(
         @Schema(description = "展示颜色", example = "#FF6B35")
         String color,
         @Schema(description = "排序号", example = "10")
-        Integer sortNo
+        Integer sortNo,
+        @Schema(description = "是否隐藏", example = "false")
+        boolean hidden,
+        @Schema(description = "是否系统预置分类", example = "false")
+        boolean system
 ) {
 }

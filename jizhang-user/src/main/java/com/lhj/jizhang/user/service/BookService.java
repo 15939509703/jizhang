@@ -6,6 +6,7 @@ import com.lhj.jizhang.common.exception.ErrorCodes;
 import com.lhj.jizhang.common.util.BusinessIdGenerator;
 import com.lhj.jizhang.user.dto.BookCreateInDTO;
 import com.lhj.jizhang.user.dto.BookOutDTO;
+import com.lhj.jizhang.user.dto.BookUpdateInDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
 import com.lhj.jizhang.user.entity.BookEntity;
 import com.lhj.jizhang.user.entity.BookMemberEntity;
@@ -32,17 +33,20 @@ public class BookService {
     private final BookMemberMapper bookMemberMapper;
     private final CategoryMapper categoryMapper;
     private final AccountMapper accountMapper;
+    private final BookAccessService bookAccessService;
 
     public BookService(
             BookMapper bookMapper,
             BookMemberMapper bookMemberMapper,
             CategoryMapper categoryMapper,
-            AccountMapper accountMapper
+            AccountMapper accountMapper,
+            BookAccessService bookAccessService
     ) {
         this.bookMapper = bookMapper;
         this.bookMemberMapper = bookMemberMapper;
         this.categoryMapper = categoryMapper;
         this.accountMapper = accountMapper;
+        this.bookAccessService = bookAccessService;
     }
 
     public List<BookOutDTO> list(Long userId) {
@@ -74,6 +78,19 @@ public class BookService {
     @Transactional
     public BookEntity createDefault(Long userId) {
         return createBook(userId, "个人账本", "默认账本", "CNY", "Asia/Shanghai");
+    }
+
+    @Transactional
+    public BookOutDTO update(Long userId, Long bookId, BookUpdateInDTO input) {
+        BookMemberEntity member = bookAccessService.requireAdmin(userId, bookId);
+        BookEntity book = requireBook(bookId);
+        book.setName(input.name().trim());
+        book.setDescription(blankToNull(input.description()));
+        book.setCoverUrl(blankToNull(input.coverUrl()));
+        book.setVersion(book.getVersion() + 1);
+        book.setModifier(String.valueOf(userId));
+        bookMapper.updateById(book);
+        return toOutput(book, member.getRole());
     }
 
     private BookEntity createBook(Long userId, String name, String description, String currencyCode, String timezone) {
@@ -161,7 +178,19 @@ public class BookService {
 
     private BookOutDTO toOutput(BookEntity book, String role) {
         return new BookOutDTO(book.getId(), book.getBookNo(), book.getName(), book.getDescription(),
-                book.getCurrencyCode(), book.getTimezone(), role);
+                book.getCoverUrl(), book.getCurrencyCode(), book.getTimezone(), role);
+    }
+
+    private BookEntity requireBook(Long bookId) {
+        BookEntity book = bookMapper.selectById(bookId);
+        if (book == null || book.getStatus() == null || book.getStatus() == 0) {
+            throw new BusinessException(ErrorCodes.BOOK_NOT_FOUND, "账本不存在或不可用");
+        }
+        return book;
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private String valueOrDefault(String value, String fallback) {

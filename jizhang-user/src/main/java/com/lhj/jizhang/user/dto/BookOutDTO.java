@@ -12,6 +12,8 @@ public record BookOutDTO(
         String name,
         @Schema(description = "账本说明", example = "记录家庭日常收支")
         String description,
+        @Schema(description = "账本封面地址", example = "https://example.com/book-cover.jpg")
+        String coverUrl,
         @Schema(description = "币种代码", example = "CNY")
         String currencyCode,
         @Schema(description = "账本时区", example = "Asia/Shanghai")

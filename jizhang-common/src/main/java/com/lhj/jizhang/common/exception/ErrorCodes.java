@@ -12,6 +12,8 @@ public final class ErrorCodes {
     public static final String CATEGORY_INVALID = "CATEGORY_INVALID";
     public static final String TRANSACTION_INVALID = "TRANSACTION_INVALID";
     public static final String TRANSACTION_CONFLICT = "TRANSACTION_CONFLICT";
+    public static final String MEMBER_INVALID = "MEMBER_INVALID";
+    public static final String ATTACHMENT_INVALID = "ATTACHMENT_INVALID";
 
     private ErrorCodes() {
     }

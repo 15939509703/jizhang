@@ -5,20 +5,20 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
 @Data
-@TableName("fin_book")
-public class BookEntity {
+@TableName("fin_budget_item")
+public class BudgetItemEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String bookNo;
-    private Long ownerUserId;
-    private String name;
-    private String description;
-    private String coverUrl;
-    private String currencyCode;
-    private String timezone;
-    private Integer status;
-    private Integer version;
+    private Long budgetId;
+    private Long categoryId;
+    private BigDecimal limitAmount;
+    private BigDecimal warningRate;
     private String creator;
+    private LocalDateTime createdTime;
     private String modifier;
+    private LocalDateTime modifiedTime;
 }

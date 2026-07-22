@@ -109,13 +109,34 @@ Authorization: Bearer <accessToken>
 ```text
 GET  /api/v1/books
 POST /api/v1/books
-GET  /api/v1/categories?bookId={bookId}&type={EXPENSE|INCOME}
+PUT  /api/v1/books/{id}
+GET  /api/v1/books/{id}/members
+POST /api/v1/books/{id}/members
+PUT  /api/v1/books/{bookId}/members/{memberId}
+DELETE /api/v1/books/{bookId}/members/{memberId}
+GET  /api/v1/categories?bookId={bookId}&type={EXPENSE|INCOME}&includeHidden={boolean}
+POST /api/v1/categories
+PUT  /api/v1/categories/{id}
+PUT  /api/v1/categories/{id}/visibility
+PUT  /api/v1/categories/sort
+DELETE /api/v1/categories/{id}
 GET  /api/v1/accounts?bookId={bookId}
 POST /api/v1/accounts
+GET  /api/v1/accounts/{id}
+GET  /api/v1/accounts/{id}/entries
+POST /api/v1/accounts/{id}/adjustments
 GET  /api/v1/transactions?bookId={bookId}&cursorId={cursorId}&limit=20
+GET  /api/v1/transactions/{id}
+PUT  /api/v1/transactions/{id}
 GET  /api/v1/transactions/summary?bookId={bookId}&month={YYYY-MM}
 POST /api/v1/transactions
 POST /api/v1/transactions/{id}/void
+POST /api/v1/transactions/{id}/attachments
+GET  /api/v1/attachments/{id}
+DELETE /api/v1/attachments/{id}
+GET  /api/v1/statistics?bookId={bookId}&month={YYYY-MM}&year={YYYY}
+GET  /api/v1/budgets?bookId={bookId}&month={YYYY-MM}
+POST /api/v1/budgets
 ```
 
 新增支出示例：
@@ -145,3 +166,5 @@ Authorization: Bearer <accessToken>
 开发者工具中需将`jizhang-mini-program/project.config.json`的`appid`由`touristappid`替换为与`WX_APP_ID`相同的真实AppID。真机调试时，API地址需改为已备案的HTTPS域名，不能使用`127.0.0.1`。
 
 本地微信开发者工具模拟器默认请求`http://127.0.0.1:8081`，配置位于`jizhang-mini-program/utils/request.js`。
+
+账单图片默认保存到后端运行目录的`data/uploads`，生产环境应通过`UPLOAD_DIR`配置持久化目录。

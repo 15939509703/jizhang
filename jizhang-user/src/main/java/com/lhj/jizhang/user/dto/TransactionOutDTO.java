@@ -23,6 +23,8 @@ public record TransactionOutDTO(
         String transactionType,
         @Schema(description = "分类ID", example = "1")
         Long categoryId,
+        @Schema(description = "原账单ID，复制账单时记录来源", example = "10")
+        Long originalTransactionId,
         @Schema(description = "账单金额", example = "28.50")
         BigDecimal amount,
         @Schema(description = "币种代码", example = "CNY")
@@ -39,6 +41,8 @@ public record TransactionOutDTO(
         @Schema(description = "乐观锁版本号", example = "1")
         Integer version,
         @Schema(description = "账户余额分录")
-        List<TransactionEntryOutDTO> entries
+        List<TransactionEntryOutDTO> entries,
+        @Schema(description = "账单图片附件")
+        List<TransactionAttachmentOutDTO> attachments
 ) {
 }

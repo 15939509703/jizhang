@@ -3,6 +3,7 @@ package com.lhj.jizhang.user.service;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.lhj.jizhang.user.dto.TransactionCreateInDTO;
 import com.lhj.jizhang.user.dto.TransactionOutDTO;
+import com.lhj.jizhang.user.dto.TransactionUpdateInDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
 import com.lhj.jizhang.user.entity.AccountEntryEntity;
 import com.lhj.jizhang.user.entity.BookEntity;
@@ -118,6 +119,46 @@ class TransactionServiceTest {
         verify(transactionMapper).updateById(transaction);
     }
 
+    @Test
+    void shouldReverseOldEntryAndApplyUpdatedTransaction() {
+        TransactionEntity transaction = effectiveTransaction();
+        AccountEntity oldAccount = activeAccount(new BigDecimal("70.00"));
+        AccountEntity newAccount = activeAccount(new BigDecimal("50.00"));
+        newAccount.setId(11L);
+        CategoryEntity incomeCategory = expenseCategory();
+        incomeCategory.setId(21L);
+        incomeCategory.setCategoryType("INCOME");
+        AccountEntryEntity original = originalExpenseEntry();
+        List<AccountEntryEntity> entries = new ArrayList<>(List.of(original));
+        when(transactionMapper.selectByIdForUpdate(100L)).thenReturn(transaction);
+        when(categoryMapper.selectById(21L)).thenReturn(incomeCategory);
+        when(accountEntryMapper.selectList(any(Wrapper.class)))
+                .thenReturn(List.of(original))
+                .thenAnswer(invocation -> entries);
+        when(accountMapper.selectByIdForUpdate(10L)).thenReturn(oldAccount);
+        when(accountMapper.selectByIdForUpdate(11L)).thenReturn(newAccount);
+        doAnswer(invocation -> {
+            AccountEntryEntity entry = invocation.getArgument(0);
+            entry.setId(600L + entries.size());
+            entries.add(entry);
+            return 1;
+        }).when(accountEntryMapper).insert(any(AccountEntryEntity.class));
+        doAnswer(invocation -> {
+            entries.clear();
+            return 1;
+        }).when(accountEntryMapper).delete(any(Wrapper.class));
+
+        TransactionUpdateInDTO input = new TransactionUpdateInDTO("INCOME", 21L, 11L, null,
+                new BigDecimal("40.00"), Instant.parse("2026-07-22T10:00:00Z"), "奖金", null, 0);
+        TransactionOutDTO result = service.update(7L, 100L, input);
+
+        assertEquals("INCOME", result.transactionType());
+        assertEquals(new BigDecimal("100.00"), oldAccount.getCurrentBalance());
+        assertEquals(new BigDecimal("90.00"), newAccount.getCurrentBalance());
+        assertEquals(1, result.entries().size());
+        assertEquals(new BigDecimal("40.00"), result.entries().getFirst().signedAmount());
+    }
+
     private List<AccountEntryEntity> captureInsertedEntries() {
         List<AccountEntryEntity> entries = new ArrayList<>();
         doAnswer(invocation -> {
@@ -137,7 +178,7 @@ class TransactionServiceTest {
     }
 
     private TransactionCreateInDTO expenseInput(String requestId) {
-        return new TransactionCreateInDTO(requestId, 1L, "EXPENSE", 20L, 10L, null,
+        return new TransactionCreateInDTO(requestId, 1L, "EXPENSE", 20L, null, 10L, null,
                 new BigDecimal("30.00"), Instant.parse("2026-07-21T10:00:00Z"), "午餐", "工作餐");
     }
 

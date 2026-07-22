@@ -107,6 +107,8 @@ Authorization: Bearer <accessToken>
 当前已实现：
 
 ```text
+GET  /api/v1/users/me
+PUT  /api/v1/users/me
 GET  /api/v1/books
 POST /api/v1/books
 PUT  /api/v1/books/{id}

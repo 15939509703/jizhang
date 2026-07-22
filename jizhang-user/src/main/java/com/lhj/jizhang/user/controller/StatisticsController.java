@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.time.YearMonth;
 
 @Tag(name = "统计分析", description = "今日、月度、趋势、分类、账户和年度统计")
@@ -33,9 +34,10 @@ public class StatisticsController {
     public ApiResponse<StatisticsDashboardOutDTO> dashboard(
             @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
             @RequestParam Long bookId,
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) @RequestParam(required = false) LocalDate weekStart,
             @DateTimeFormat(pattern = "yyyy-MM") @RequestParam(required = false) YearMonth month,
             @RequestParam(required = false) Integer year
     ) {
-        return ApiResponse.success(statisticsService.dashboard(user.userId(), bookId, month, year));
+        return ApiResponse.success(statisticsService.dashboard(user.userId(), bookId, month, year, weekStart));
     }
 }

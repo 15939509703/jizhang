@@ -88,7 +88,8 @@ class WechatUserProvisioningServiceTest {
         assertSame(user, context.user());
         assertSame(auth, context.auth());
         assertSame(book, context.defaultBook());
-        assertEquals("新昵称", user.getNickName());
+        assertEquals("旧昵称", user.getNickName());
+        assertEquals("https://example.com/new-avatar.png", user.getAvatarUrl());
         verify(userMapper).updateById(user);
         verify(bookService, never()).createDefault(any());
     }

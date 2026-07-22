@@ -25,11 +25,14 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static java.time.DayOfWeek.MONDAY;
 
 @Service
 public class StatisticsService {
@@ -46,22 +49,41 @@ public class StatisticsService {
         this.bookAccessService = bookAccessService;
     }
 
-    public StatisticsDashboardOutDTO dashboard(Long userId, Long bookId, YearMonth month, Integer year) {
+    public StatisticsDashboardOutDTO dashboard(Long userId, Long bookId, YearMonth month, Integer year,
+                                               LocalDate weekStart) {
         bookAccessService.requireMember(userId, bookId);
         BookEntity book = requireBook(bookId);
         ZoneId zone = ZoneId.of(book.getTimezone());
         YearMonth targetMonth = month == null ? YearMonth.now(zone) : month;
         int targetYear = year == null ? targetMonth.getYear() : validateYear(year);
+        LocalDate targetWeekStart = weekStart == null
+                ? LocalDate.now(zone).with(TemporalAdjusters.previousOrSame(MONDAY))
+                : weekStart;
+        LocalDate targetWeekEnd = targetWeekStart.plusDays(6);
+        Range weekRange = range(targetWeekStart.atStartOfDay(zone), targetWeekStart.plusDays(7).atStartOfDay(zone));
         Range monthRange = monthRange(targetMonth, zone);
+        Range yearRange = yearRange(targetYear, zone);
         Range todayRange = dayRange(LocalDate.now(zone), zone);
+        StatisticsSummaryOutDTO weekSummary = summary(bookId, weekRange);
         StatisticsSummaryOutDTO monthSummary = summary(bookId, monthRange);
+        StatisticsSummaryOutDTO yearSummary = summary(bookId, yearRange);
         StatisticsSummaryOutDTO todaySummary = summary(bookId, todayRange);
-        List<StatisticsBreakdownOutDTO> expenseCategories = categories(bookId, "EXPENSE", monthRange);
-        List<StatisticsBreakdownOutDTO> incomeCategories = categories(bookId, "INCOME", monthRange);
+        List<StatisticsBreakdownOutDTO> weeklyExpenseCategories = categories(bookId, "EXPENSE", weekRange);
+        List<StatisticsBreakdownOutDTO> weeklyIncomeCategories = categories(bookId, "INCOME", weekRange);
+        List<StatisticsBreakdownOutDTO> monthlyExpenseCategories = categories(bookId, "EXPENSE", monthRange);
+        List<StatisticsBreakdownOutDTO> monthlyIncomeCategories = categories(bookId, "INCOME", monthRange);
+        List<StatisticsBreakdownOutDTO> annualExpenseCategories = categories(bookId, "EXPENSE", yearRange);
+        List<StatisticsBreakdownOutDTO> annualIncomeCategories = categories(bookId, "INCOME", yearRange);
         List<StatisticsBreakdownOutDTO> accounts = accounts(bookId, monthRange);
-        return new StatisticsDashboardOutDTO(targetMonth.toString(), targetYear, book.getCurrencyCode(),
-                monthSummary, todaySummary, dailyTrend(bookId, zone, 7), dailyTrend(bookId, zone, 30),
-                expenseCategories, incomeCategories, accounts, annualTrend(bookId, zone, targetYear));
+        List<StatisticsTrendOutDTO> weeklyTrend = dailyTrend(bookId, zone, targetWeekStart, 7);
+        List<StatisticsTrendOutDTO> monthlyTrend = monthlyTrend(bookId, zone, targetMonth);
+        return new StatisticsDashboardOutDTO(targetMonth.toString(), targetWeekStart.toString(),
+                targetWeekEnd.toString(), targetYear, book.getCurrencyCode(), weekSummary, monthSummary,
+                yearSummary, todaySummary, weeklyTrend, monthlyTrend, dailyTrend(bookId, zone, 7),
+                dailyTrend(bookId, zone, 30), weeklyExpenseCategories, weeklyIncomeCategories,
+                monthlyExpenseCategories, monthlyIncomeCategories, annualExpenseCategories,
+                annualIncomeCategories, monthlyExpenseCategories, monthlyIncomeCategories, accounts,
+                annualTrend(bookId, zone, targetYear));
     }
 
     private StatisticsSummaryOutDTO summary(Long bookId, Range range) {
@@ -74,6 +96,15 @@ public class StatisticsService {
     private List<StatisticsTrendOutDTO> dailyTrend(Long bookId, ZoneId zone, int days) {
         LocalDate end = LocalDate.now(zone).plusDays(1);
         LocalDate start = end.minusDays(days);
+        return dailyTrend(bookId, zone, start, days);
+    }
+
+    private List<StatisticsTrendOutDTO> monthlyTrend(Long bookId, ZoneId zone, YearMonth month) {
+        return dailyTrend(bookId, zone, month.atDay(1), month.lengthOfMonth());
+    }
+
+    private List<StatisticsTrendOutDTO> dailyTrend(Long bookId, ZoneId zone, LocalDate start, int days) {
+        LocalDate end = start.plusDays(days);
         Range range = range(start.atStartOfDay(zone), end.atStartOfDay(zone));
         Map<String, StatisticsPeriodAggregate> values = statisticsMapper
                 .selectDaily(bookId, range.startAt(), range.endAt(), offset(zone, start))
@@ -147,6 +178,11 @@ public class StatisticsService {
 
     private Range monthRange(YearMonth month, ZoneId zone) {
         return range(month.atDay(1).atStartOfDay(zone), month.plusMonths(1).atDay(1).atStartOfDay(zone));
+    }
+
+    private Range yearRange(int year, ZoneId zone) {
+        ZonedDateTime start = Year.of(year).atDay(1).atStartOfDay(zone);
+        return range(start, start.plusYears(1));
     }
 
     private Range dayRange(LocalDate date, ZoneId zone) {

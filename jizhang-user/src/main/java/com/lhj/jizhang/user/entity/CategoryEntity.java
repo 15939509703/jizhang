@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 @TableName("fin_category")
 public class CategoryEntity {
@@ -23,5 +25,7 @@ public class CategoryEntity {
     private Integer hiddenFlag;
     private Integer deletedFlag;
     private String creator;
+    private LocalDateTime createdTime;
     private String modifier;
+    private LocalDateTime modifiedTime;
 }

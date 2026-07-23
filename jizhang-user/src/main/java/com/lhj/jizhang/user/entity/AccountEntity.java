@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Data
 @TableName("fin_account")
@@ -25,5 +26,7 @@ public class AccountEntity {
     private Integer version;
     private Integer deletedFlag;
     private String creator;
+    private LocalDateTime createdTime;
     private String modifier;
+    private LocalDateTime modifiedTime;
 }

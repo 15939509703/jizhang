@@ -8,19 +8,21 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("fin_book")
-public class BookEntity {
+@TableName("sys_export_task")
+public class ExportTaskEntity {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private String bookNo;
-    private Long ownerUserId;
-    private String name;
-    private String description;
-    private String coverUrl;
-    private String currencyCode;
-    private String timezone;
-    private Integer status;
-    private Integer version;
+    private String taskNo;
+    private Long userId;
+    private Long bookId;
+    private String exportType;
+    private String queryJson;
+    private String taskStatus;
+    private String fileObjectKey;
+    private String failureReason;
+    private LocalDateTime startedTime;
+    private LocalDateTime finishedTime;
+    private LocalDateTime expiredTime;
     private String creator;
     private LocalDateTime createdTime;
     private String modifier;

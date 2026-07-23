@@ -21,7 +21,7 @@ spring:
       password: ${REDIS_PASSWORD:}
       timeout: 2s
   liquibase:
-    enabled: ${LIQUIBASE_ENABLED:true}
+    enabled: ${SPRING_LIQUIBASE_ENABLED:true}
     change-log: classpath:/db/changelog/db.changelog-master.yaml
   jackson:
     default-property-inclusion: non_null

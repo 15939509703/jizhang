@@ -40,6 +40,7 @@ import java.util.stream.Collectors;
 public class TransactionService {
     private static final Set<String> TRANSACTION_TYPES = Set.of("EXPENSE", "INCOME", "TRANSFER");
     private static final Set<String> STATUSES = Set.of("EFFECTIVE", "VOIDED", "REVERSED");
+    private static final Set<String> SORT_OPTIONS = Set.of("AMOUNT_DESC");
 
     private final TransactionMapper transactionMapper;
     private final AccountEntryMapper accountEntryMapper;
@@ -96,16 +97,21 @@ public class TransactionService {
             String keyword,
             Instant startAt,
             Instant endAt,
+            String sortBy,
             Long cursorId,
             Integer limit
     ) {
         bookAccessService.requireMember(userId, bookId);
-        int pageSize = validateQuery(type, status, limit);
+        int pageSize = validateQuery(type, status, sortBy, limit);
         validateAmountRange(minAmount, maxAmount);
         var query = Wrappers.<TransactionEntity>lambdaQuery()
                 .eq(TransactionEntity::getBookId, bookId)
-                .orderByDesc(TransactionEntity::getId)
                 .last("LIMIT " + (pageSize + 1));
+        if ("AMOUNT_DESC".equals(sortBy)) {
+            query.orderByDesc(TransactionEntity::getAmount, TransactionEntity::getId);
+        } else {
+            query.orderByDesc(TransactionEntity::getId);
+        }
         if (type != null) {
             query.eq(TransactionEntity::getTransactionType, type);
         } else {
@@ -225,12 +231,15 @@ public class TransactionService {
         }
     }
 
-    private int validateQuery(String type, String status, Integer limit) {
+    private int validateQuery(String type, String status, String sortBy, Integer limit) {
         if (type != null && !TRANSACTION_TYPES.contains(type)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "账单类型不正确");
         }
         if (status != null && !STATUSES.contains(status)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "账单状态不正确");
+        }
+        if (sortBy != null && !SORT_OPTIONS.contains(sortBy)) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "排序方式不正确");
         }
         int pageSize = limit == null ? 20 : limit;
         if (pageSize < 1 || pageSize > 100) {

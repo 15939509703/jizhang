@@ -80,13 +80,16 @@ public class TransactionController {
             @RequestParam(required = false) Instant startAt,
             @Parameter(description = "发生时间终点（ISO-8601）", example = "2026-08-01T00:00:00Z")
             @RequestParam(required = false) Instant endAt,
+            @Parameter(description = "排序方式", example = "AMOUNT_DESC",
+                    schema = @Schema(allowableValues = {"AMOUNT_DESC"}))
+            @RequestParam(required = false) String sortBy,
             @Parameter(description = "上一页最后一条账单ID", example = "100")
             @RequestParam(required = false) Long cursorId,
             @Parameter(description = "每页条数，默认20，最大100", example = "20")
             @RequestParam(required = false) Integer limit
     ) {
         return ApiResponse.success(transactionService.list(user.userId(), bookId, type, status, categoryId,
-                accountId, minAmount, maxAmount, keyword, startAt, endAt, cursorId, limit));
+                accountId, minAmount, maxAmount, keyword, startAt, endAt, sortBy, cursorId, limit));
     }
 
     @Operation(summary = "查询账单详情")

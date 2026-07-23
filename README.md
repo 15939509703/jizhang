@@ -177,6 +177,6 @@ Authorization: Bearer <accessToken>
 
 开发者工具中需将`jizhang-mini-program/project.config.json`的`appid`由`touristappid`替换为与`WX_APP_ID`相同的真实AppID。真机调试时，API地址需改为已备案的HTTPS域名，不能使用`127.0.0.1`。
 
-本地微信开发者工具模拟器默认请求`http://127.0.0.1:8081`，配置位于`jizhang-mini-program/utils/request.js`。
+当前微信开发者工具模拟器请求`http://120.26.54.74`，配置位于`jizhang-mini-program/utils/request.js`。该 HTTP IP 地址仅用于关闭域名校验后的联调，真机和正式发布仍需改为已备案的 HTTPS 域名。
 
 账单图片默认保存到后端运行目录的`data/uploads`，生产环境应通过`UPLOAD_DIR`配置持久化目录。

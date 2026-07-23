@@ -9,6 +9,7 @@ import com.lhj.jizhang.user.dto.AccountCreateInDTO;
 import com.lhj.jizhang.user.dto.AccountEntryOutDTO;
 import com.lhj.jizhang.user.dto.AccountEntryPageOutDTO;
 import com.lhj.jizhang.user.dto.AccountOutDTO;
+import com.lhj.jizhang.user.dto.AccountUpdateInDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
 import com.lhj.jizhang.user.entity.AccountEntryEntity;
 import com.lhj.jizhang.user.entity.BookEntity;
@@ -81,6 +82,26 @@ public class AccountService {
         account.setModifier(String.valueOf(userId));
         accountMapper.insert(account);
         return toOutput(account);
+    }
+
+    @Transactional
+    public AccountOutDTO update(Long userId, Long accountId, AccountUpdateInDTO input) {
+        AccountEntity account = requireAccount(accountId);
+        bookAccessService.requireWritable(userId, account.getBookId());
+        account.setName(input.name().trim());
+        account.setModifier(String.valueOf(userId));
+        accountMapper.updateById(account);
+        return toOutput(account);
+    }
+
+    @Transactional
+    public void delete(Long userId, Long accountId) {
+        AccountEntity account = requireAccount(accountId);
+        bookAccessService.requireWritable(userId, account.getBookId());
+        account.setDeletedFlag(1);
+        account.setStatus(0);
+        account.setModifier(String.valueOf(userId));
+        accountMapper.updateById(account);
     }
 
     @Transactional

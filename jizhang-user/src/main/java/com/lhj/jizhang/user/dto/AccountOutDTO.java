@@ -3,6 +3,7 @@ package com.lhj.jizhang.user.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Schema(name = "Account", description = "账户信息")
 public record AccountOutDTO(
@@ -25,9 +26,13 @@ public record AccountOutDTO(
         BigDecimal currentBalance,
         @Schema(description = "是否计入总资产", example = "true")
         boolean includedInAssets,
+        @Schema(description = "排序号", example = "10")
+        Integer sortNo,
         @Schema(description = "账户状态：1有效，0停用", example = "1")
         Integer status,
         @Schema(description = "乐观锁版本号", example = "2")
-        Integer version
+        Integer version,
+        @Schema(description = "创建时间", example = "2026-07-23T10:00:00Z")
+        Instant createdAt
 ) {
 }

@@ -9,6 +9,7 @@ import com.lhj.jizhang.user.dto.AccountCreateInDTO;
 import com.lhj.jizhang.user.dto.AccountEntryOutDTO;
 import com.lhj.jizhang.user.dto.AccountEntryPageOutDTO;
 import com.lhj.jizhang.user.dto.AccountOutDTO;
+import com.lhj.jizhang.user.dto.AccountSortInDTO;
 import com.lhj.jizhang.user.dto.AccountUpdateInDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
 import com.lhj.jizhang.user.entity.AccountEntryEntity;
@@ -24,8 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -74,7 +77,7 @@ public class AccountService {
         account.setInitialBalance(input.initialBalance());
         account.setCurrentBalance(input.initialBalance());
         account.setIncludedInAssets(Boolean.TRUE.equals(input.includedInAssets()) ? 1 : 0);
-        account.setSortNo(100);
+        account.setSortNo(nextSortNo(input.bookId()));
         account.setStatus(1);
         account.setVersion(0);
         account.setDeletedFlag(0);
@@ -92,6 +95,21 @@ public class AccountService {
         account.setModifier(String.valueOf(userId));
         accountMapper.updateById(account);
         return toOutput(account);
+    }
+
+    @Transactional
+    public void sort(Long userId, AccountSortInDTO input) {
+        bookAccessService.requireWritable(userId, input.bookId());
+        validateSortItems(input);
+        for (var item : input.items()) {
+            AccountEntity account = requireAccount(item.accountId());
+            if (!input.bookId().equals(account.getBookId())) {
+                throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "账户不属于当前账本");
+            }
+            account.setSortNo(item.sortNo());
+            account.setModifier(String.valueOf(userId));
+            accountMapper.updateById(account);
+        }
     }
 
     @Transactional
@@ -161,6 +179,25 @@ public class AccountService {
         return account;
     }
 
+    private void validateSortItems(AccountSortInDTO input) {
+        Set<Long> accountIds = new HashSet<>();
+        for (var item : input.items()) {
+            if (!accountIds.add(item.accountId())) {
+                throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "账户排序列表不能重复");
+            }
+            if (item.sortNo() < 0) {
+                throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "账户排序号不能小于0");
+            }
+        }
+    }
+
+    private int nextSortNo(Long bookId) {
+        AccountEntity last = accountMapper.selectOne(Wrappers.<AccountEntity>lambdaQuery()
+                .eq(AccountEntity::getBookId, bookId).eq(AccountEntity::getDeletedFlag, 0)
+                .orderByDesc(AccountEntity::getSortNo).last("LIMIT 1"));
+        return last == null ? 10 : last.getSortNo() + 10;
+    }
+
     private TransactionEntity findAdjustment(Long userId, Long bookId, String requestId) {
         return transactionMapper.selectOne(Wrappers.<TransactionEntity>lambdaQuery()
                 .eq(TransactionEntity::getBookId, bookId)
@@ -222,7 +259,11 @@ public class AccountService {
     private AccountOutDTO toOutput(AccountEntity account) {
         return new AccountOutDTO(account.getId(), account.getAccountNo(), account.getBookId(), account.getName(),
                 account.getAccountType(), account.getAccountNature(), account.getInitialBalance(),
-                account.getCurrentBalance(), account.getIncludedInAssets() == 1, account.getStatus(),
-                account.getVersion());
+                account.getCurrentBalance(), account.getIncludedInAssets() == 1, account.getSortNo(),
+                account.getStatus(), account.getVersion(), toInstant(account.getCreatedTime()));
+    }
+
+    private java.time.Instant toInstant(LocalDateTime time) {
+        return time == null ? null : time.toInstant(ZoneOffset.UTC);
     }
 }

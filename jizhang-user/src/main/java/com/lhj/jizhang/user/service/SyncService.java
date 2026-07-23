@@ -171,8 +171,8 @@ public class SyncService {
     private AccountOutDTO toAccount(AccountEntity account) {
         return new AccountOutDTO(account.getId(), account.getAccountNo(), account.getBookId(), account.getName(),
                 account.getAccountType(), account.getAccountNature(), account.getInitialBalance(),
-                account.getCurrentBalance(), account.getIncludedInAssets() == 1, account.getStatus(),
-                account.getVersion());
+                account.getCurrentBalance(), account.getIncludedInAssets() == 1, account.getSortNo(),
+                account.getStatus(), account.getVersion(), toInstant(account.getCreatedTime()));
     }
 
     private BudgetSyncOutDTO toBudget(BudgetEntity budget) {

@@ -6,6 +6,7 @@ import com.lhj.jizhang.user.dto.AccountAdjustInDTO;
 import com.lhj.jizhang.user.dto.AccountCreateInDTO;
 import com.lhj.jizhang.user.dto.AccountEntryPageOutDTO;
 import com.lhj.jizhang.user.dto.AccountOutDTO;
+import com.lhj.jizhang.user.dto.AccountSortInDTO;
 import com.lhj.jizhang.user.dto.AccountUpdateInDTO;
 import com.lhj.jizhang.user.service.AccountService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -72,6 +73,16 @@ public class AccountController {
             @RequestBody @Valid AccountUpdateInDTO input
     ) {
         return ApiResponse.success(accountService.update(user.userId(), id, input));
+    }
+
+    @Operation(summary = "调整账户排序")
+    @PutMapping("/sort")
+    public ApiResponse<Void> sort(
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody @Valid AccountSortInDTO input
+    ) {
+        accountService.sort(user.userId(), input);
+        return ApiResponse.success(null);
     }
 
     @Operation(summary = "删除账户")

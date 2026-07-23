@@ -1,0 +1,29 @@
+[Unit]
+Description=Jizhang backend service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=jizhang
+Group=jizhang
+WorkingDirectory=/opt/jizhang-server
+EnvironmentFile=/etc/jizhang/jizhang-server.env
+ExecStartPre=/usr/bin/mkdir -p /var/lib/jizhang/tmp /var/lib/jizhang/uploads
+ExecStart=/usr/bin/java -XX:MaxRAMPercentage=75 -Djava.io.tmpdir=/var/lib/jizhang/tmp -jar /opt/jizhang-server/jizhang-server.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+StateDirectory=jizhang
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/jizhang
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

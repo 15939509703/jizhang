@@ -54,6 +54,16 @@ export JWT_SECRET_BASE64="$(openssl rand -base64 32)"
 
 新环境可参考`.env.example`创建自己的`.env.local`，不要提交真实AppSecret。
 
+生产环境使用`prod` profile，并通过 systemd 的`EnvironmentFile`读取服务器私有配置。可直接参考：
+
+```text
+deploy/jizhang-server.env.example
+deploy/jizhang-server.service
+deploy/nginx-jizhang.conf.example
+```
+
+同机部署 MySQL 和 Redis 时，生产配置使用`127.0.0.1`连接，不需要经过服务器公网 IP。真实数据库密码、Redis 密码、微信 AppSecret 和 JWT 密钥只写入服务器上的`/etc/jizhang/jizhang-server.env`，不要写入仓库。
+
 ## 编译与启动
 
 工程要求使用JDK 21，根目录的`.java-version`和Maven Enforcer会阻止误用其他JDK。

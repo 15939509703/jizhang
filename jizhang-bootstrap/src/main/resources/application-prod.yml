@@ -1,0 +1,47 @@
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  forward-headers-strategy: framework
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DB_MAX_POOL_SIZE:10}
+      minimum-idle: ${DB_MIN_IDLE:2}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:5000}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: ${REDIS_TIMEOUT:2s}
+  liquibase:
+    enabled: ${LIQUIBASE_ENABLED:true}
+
+app:
+  storage:
+    upload-dir: ${UPLOAD_DIR}
+  logging:
+    http:
+      include-body: ${HTTP_LOG_INCLUDE_BODY:false}
+      max-payload-length: ${HTTP_LOG_MAX_PAYLOAD_LENGTH:4096}
+  wechat:
+    app-id: ${WX_APP_ID}
+    app-secret: ${WX_APP_SECRET}
+  security:
+    jwt:
+      secret-base64: ${JWT_SECRET_BASE64}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}

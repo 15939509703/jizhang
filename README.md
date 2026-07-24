@@ -35,6 +35,14 @@ git clone --single-branch --branch dev \
 3. Redis运行在本机6379端口。
 4. 已在微信公众平台取得真实小程序AppID和AppSecret。
 
+## Docker 部署
+
+如果要用 Docker 跑后端、MySQL 和 Redis，请看：
+
+```text
+deploy/docker/DEPLOYMENT.md
+```
+
 ## 环境变量
 
 ```bash

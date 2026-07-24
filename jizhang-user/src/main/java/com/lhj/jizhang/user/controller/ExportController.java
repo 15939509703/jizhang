@@ -22,8 +22,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
-
 @Tag(name = "数据导出", description = "账单明细 Excel/CSV 导出")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
@@ -63,7 +61,7 @@ public class ExportController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(file.contentType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
-                        .filename(file.fileName(), StandardCharsets.UTF_8).build().toString())
+                        .filename(file.fileName()).build().toString())
                 .body(file.bytes());
     }
 }

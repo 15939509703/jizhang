@@ -18,14 +18,31 @@ import com.lhj.jizhang.user.mapper.AccountMapper;
 import com.lhj.jizhang.user.mapper.CategoryMapper;
 import com.lhj.jizhang.user.mapper.ExportTaskMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +52,13 @@ import java.util.stream.Collectors;
 
 @Service
 public class ExportService {
+    private static final List<String> EXPORT_HEADERS = List.of(
+            "发生时间", "类型", "标题", "分类", "账户", "金额", "状态", "备注");
+    private static final int[] EXCEL_COLUMN_WIDTHS = {22, 10, 24, 16, 24, 14, 10, 30};
+    private static final DateTimeFormatter EXPORT_FILE_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+    private static final ZoneId EXPORT_FILE_TIME_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final String XLSX_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private static final Set<String> TRANSACTION_TYPES = Set.of("EXPENSE", "INCOME", "TRANSFER");
     private static final Set<String> STATUSES = Set.of("EFFECTIVE", "VOIDED", "REVERSED");
 
@@ -96,12 +120,10 @@ public class ExportService {
         ExportCreateInDTO query = readQuery(task);
         List<TransactionEntity> rows = loadTransactions(query);
         ExportContext context = loadContext(query.bookId(), rows);
-        String delimiter = "EXCEL".equals(task.getExportType()) ? "\t" : ",";
-        String content = buildContent(rows, context, delimiter);
-        String suffix = "EXCEL".equals(task.getExportType()) ? "xls" : "csv";
-        String contentType = "EXCEL".equals(task.getExportType()) ? "application/vnd.ms-excel" : "text/csv";
-        byte[] bytes = ("\uFEFF" + content).getBytes(StandardCharsets.UTF_8);
-        return new ExportFile("jizhang-" + task.getTaskNo() + "." + suffix, contentType, bytes);
+        if ("EXCEL".equals(task.getExportType())) {
+            return buildExcelFile(task, rows, context);
+        }
+        return buildCsvFile(task, rows, context);
     }
 
     private List<TransactionEntity> loadTransactions(ExportCreateInDTO input) {
@@ -160,22 +182,85 @@ public class ExportService {
                         LinkedHashMap::new, Collectors.toList()));
     }
 
-    private String buildContent(List<TransactionEntity> rows, ExportContext context, String delimiter) {
+    private ExportFile buildExcelFile(ExportTaskEntity task, List<TransactionEntity> rows, ExportContext context) {
+        String fileName = exportFileName(task, "xlsx");
+        return new ExportFile(fileName, XLSX_CONTENT_TYPE, buildExcel(rows, context));
+    }
+
+    private byte[] buildExcel(List<TransactionEntity> rows, ExportContext context) {
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("账单明细");
+            populateExcelSheet(workbook, sheet, rows, context);
+            workbook.write(output);
+            return output.toByteArray();
+        } catch (IOException exception) {
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "导出文件生成失败", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private void populateExcelSheet(Workbook workbook, Sheet sheet, List<TransactionEntity> rows,
+                                    ExportContext context) {
+        Row headerRow = sheet.createRow(0);
+        headerRow.setHeightInPoints(24);
+        addExcelRow(headerRow, EXPORT_HEADERS, createHeaderStyle(workbook));
+        for (int index = 0; index < rows.size(); index++) {
+            addExcelRow(sheet.createRow(index + 1), transactionValues(rows.get(index), context), null);
+        }
+        sheet.createFreezePane(0, 1);
+        for (int index = 0; index < EXCEL_COLUMN_WIDTHS.length; index++) {
+            sheet.setColumnWidth(index, EXCEL_COLUMN_WIDTHS[index] * 256);
+        }
+    }
+
+    private CellStyle createHeaderStyle(Workbook workbook) {
+        Font font = workbook.createFont();
+        font.setBold(true);
+        CellStyle style = workbook.createCellStyle();
+        style.setFont(font);
+        style.setFillForegroundColor(IndexedColors.YELLOW.getIndex());
+        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        style.setAlignment(HorizontalAlignment.CENTER);
+        style.setVerticalAlignment(VerticalAlignment.CENTER);
+        return style;
+    }
+
+    private void addExcelRow(Row row, List<String> values, CellStyle style) {
+        for (int index = 0; index < values.size(); index++) {
+            Cell cell = row.createCell(index);
+            cell.setCellValue(values.get(index) == null ? "" : values.get(index));
+            if (style != null) {
+                cell.setCellStyle(style);
+            }
+        }
+    }
+
+    private ExportFile buildCsvFile(ExportTaskEntity task, List<TransactionEntity> rows, ExportContext context) {
+        String content = buildDelimitedContent(rows, context, ",");
+        byte[] bytes = ("\uFEFF" + content).getBytes(StandardCharsets.UTF_8);
+        return new ExportFile(exportFileName(task, "csv"), "text/csv", bytes);
+    }
+
+    private String exportFileName(ExportTaskEntity task, String suffix) {
+        LocalDateTime finishedTime = task.getFinishedTime() == null
+                ? LocalDateTime.now(ZoneOffset.UTC) : task.getFinishedTime();
+        String timestamp = finishedTime.atOffset(ZoneOffset.UTC).atZoneSameInstant(EXPORT_FILE_TIME_ZONE)
+                .format(EXPORT_FILE_TIME_FORMAT);
+        return "bills-" + timestamp + "." + suffix;
+    }
+
+    private String buildDelimitedContent(List<TransactionEntity> rows, ExportContext context, String delimiter) {
         StringBuilder builder = new StringBuilder();
-        addRow(builder, delimiter, List.of("发生时间", "类型", "标题", "分类", "账户", "金额", "状态", "备注"));
+        addRow(builder, delimiter, EXPORT_HEADERS);
         for (TransactionEntity row : rows) {
-            addRow(builder, delimiter, List.of(
-                    String.valueOf(row.getHappenedAt()),
-                    typeLabel(row.getTransactionType()),
-                    row.getTitle(),
-                    categoryName(context, row.getCategoryId()),
-                    accountNames(context, row.getId()),
-                    String.valueOf(row.getAmount()),
-                    statusLabel(row.getStatus()),
-                    row.getNote()
-            ));
+            addRow(builder, delimiter, transactionValues(row, context));
         }
         return builder.toString();
+    }
+
+    private List<String> transactionValues(TransactionEntity row, ExportContext context) {
+        return Arrays.asList(String.valueOf(row.getHappenedAt()), typeLabel(row.getTransactionType()),
+                row.getTitle(), categoryName(context, row.getCategoryId()), accountNames(context, row.getId()),
+                String.valueOf(row.getAmount()), statusLabel(row.getStatus()), row.getNote());
     }
 
     private void addRow(StringBuilder builder, String delimiter, List<String> values) {

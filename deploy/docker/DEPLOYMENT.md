@@ -39,6 +39,8 @@ cp deploy/jizhang-server.env.example /etc/jizhang/jizhang-server.env
 
 7. 启动后端容器：
 
+首次发布功能扩展版本前先备份数据库。应用启动时 Liquibase 会执行 `004-feature-expansion.sql`，新增 `fin_recurring_rule`、`fin_recurring_execution`，并为 `fin_account` 增加 `archived_time`。
+
 ```bash
 docker compose -f deploy/docker/docker-compose.app.yml up -d --build
 ```
@@ -56,6 +58,8 @@ curl http://127.0.0.1:8081/actuator/health
 ```
 
 10. 如果服务器前面还有 Nginx，保持反代到 `127.0.0.1:8081`，以你当前 Nginx 配置为准。
+
+11. 验证周期规则、账单日历、预算和资产接口后，再上传并发布微信小程序版本。
 
 ## 3. 以后改代码后的手动部署
 
@@ -110,6 +114,18 @@ docker exec -i mysql8 sh -c 'MYSQL_PWD="$(cat /run/secrets/mysql_root_password)"
 3. 启动 Docker 版服务。
 4. 如果 Redis 也换了容器，旧的 refresh token 会失效，用户需要重新登录。
 
+### 4.4 功能扩展配置
+
+```text
+FEATURE_RECURRING_TRANSACTIONS=true
+FEATURE_TRANSACTION_CALENDAR=true
+FEATURE_BUDGET_FORECAST=true
+FEATURE_ASSET_DASHBOARD=true
+RECURRING_SCAN_INTERVAL_MS=300000
+```
+
+周期扫描默认每 5 分钟执行一次。临时设置 `FEATURE_RECURRING_TRANSACTIONS=false` 可停止领取新的周期任务，已经成功生成的账单不会被删除或冲正。
+
 ## 5. 回滚
 
 如果新版本启动失败：
@@ -132,6 +148,8 @@ docker compose -f deploy/docker/docker-compose.app.yml logs --tail 200 app
 ```bash
 docker compose -f deploy/docker/docker-compose.app.yml stop app
 ```
+
+`004-feature-expansion.sql` 已执行后，回滚应用镜像时保留新增表和字段，不执行 `DROP TABLE` 或删除执行历史。需要紧急关闭时，先关闭周期任务配置并重建容器，再回滚前端入口或后端镜像。
 
 ## 6. 注意事项
 

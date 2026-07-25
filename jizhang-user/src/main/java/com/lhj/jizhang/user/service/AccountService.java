@@ -92,6 +92,10 @@ public class AccountService {
         AccountEntity account = requireAccount(accountId);
         bookAccessService.requireWritable(userId, account.getBookId());
         account.setName(input.name().trim());
+        if (input.includedInAssets() != null) {
+            account.setIncludedInAssets(Boolean.TRUE.equals(input.includedInAssets()) ? 1 : 0);
+        }
+        account.setVersion(account.getVersion() + 1);
         account.setModifier(String.valueOf(userId));
         accountMapper.updateById(account);
         return toOutput(account);
@@ -118,6 +122,7 @@ public class AccountService {
         bookAccessService.requireWritable(userId, account.getBookId());
         account.setDeletedFlag(1);
         account.setStatus(0);
+        account.setArchivedTime(LocalDateTime.now(ZoneOffset.UTC));
         account.setModifier(String.valueOf(userId));
         accountMapper.updateById(account);
     }

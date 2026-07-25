@@ -26,6 +26,10 @@ git clone --single-branch --branch dev \
 - 分类列表、账户列表与账户创建。
 - 账单新增、游标分页查询和业务作废。
 - 账单请求幂等、账户行锁、余额分录和作废冲正。
+- 周期账单规则、自动执行、待确认、跳过、失败重试和执行历史。
+- 按账本时区聚合的自然月账单日历及每日 UTC 查询边界。
+- 分级预算预警、日均可用额度和月底支出预测。
+- 资产、负债、净资产汇总以及最近 6 个月趋势。
 - IDEA控制台HTTP访问日志。
 
 ## 前置条件
@@ -61,6 +65,18 @@ export JWT_SECRET_BASE64="$(openssl rand -base64 32)"
 ```
 
 新环境可参考`.env.example`创建自己的`.env.local`，不要提交真实AppSecret。
+
+功能扩展配置默认全部开启：
+
+```text
+FEATURE_RECURRING_TRANSACTIONS=true
+FEATURE_TRANSACTION_CALENDAR=true
+FEATURE_BUDGET_FORECAST=true
+FEATURE_ASSET_DASHBOARD=true
+RECURRING_SCAN_INTERVAL_MS=300000
+```
+
+`FEATURE_RECURRING_TRANSACTIONS=false` 会停止周期调度扫描。上线前可增大扫描间隔做低频观察，但生产环境不建议小于 60 秒。
 
 生产环境使用`prod` profile，并通过 systemd 的`EnvironmentFile`读取服务器私有配置。可直接参考：
 
@@ -127,6 +143,7 @@ Authorization: Bearer <accessToken>
 ```text
 GET  /api/v1/users/me
 PUT  /api/v1/users/me
+GET  /api/v1/features
 GET  /api/v1/books
 POST /api/v1/books
 PUT  /api/v1/books/{id}
@@ -157,7 +174,18 @@ DELETE /api/v1/attachments/{id}
 GET  /api/v1/statistics?bookId={bookId}&month={YYYY-MM}&year={YYYY}
 GET  /api/v1/budgets?bookId={bookId}&month={YYYY-MM}
 POST /api/v1/budgets
+GET  /api/v1/recurring-transactions?bookId={bookId}&status={ACTIVE|PAUSED|COMPLETED}
+POST /api/v1/recurring-transactions
+GET  /api/v1/recurring-executions?bookId={bookId}&status={PENDING|PROCESSING|SUCCESS|SKIPPED|FAILED}
+POST /api/v1/recurring-executions/{id}/confirm
+POST /api/v1/recurring-executions/{id}/skip
+POST /api/v1/recurring-executions/{id}/retry
+GET  /api/v1/transaction-calendar?bookId={bookId}&month={YYYY-MM}
+GET  /api/v1/assets/summary?bookId={bookId}
+GET  /api/v1/assets/trend?bookId={bookId}&months=6
 ```
+
+Liquibase 启动时会执行 `004-feature-expansion.sql`，新增周期规则表、周期执行表和账户归档时间字段。部署顺序及回滚约束见 `deploy/docker/DEPLOYMENT.md`。
 
 新增支出示例：
 

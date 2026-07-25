@@ -31,6 +31,20 @@ public record BudgetOutDTO(
         Integer status,
         @Schema(description = "使用状态：UNSET、OK、WARN、OVER", example = "OK")
         String usageStatus,
+        @Schema(description = "预警级别：UNSET、NORMAL、ATTENTION、WARNING、OVER")
+        String alertLevel,
+        @Schema(description = "当月已经过天数")
+        Integer daysElapsed,
+        @Schema(description = "当月剩余天数，包含当天")
+        Integer daysRemaining,
+        @Schema(description = "本月日均可用额度")
+        BigDecimal dailyAvailableAmount,
+        @Schema(description = "预计月底支出，第3天前为空")
+        BigDecimal forecastExpenseAmount,
+        @Schema(description = "预计月底剩余额度，第3天前为空")
+        BigDecimal forecastRemainingAmount,
+        @Schema(description = "预计是否超预算，第3天前为空")
+        Boolean forecastOverBudget,
         @Schema(description = "账本币种", example = "CNY")
         String currencyCode,
         @Schema(description = "分类预算列表")

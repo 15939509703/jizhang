@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -146,6 +147,7 @@ public class BudgetService {
         BigDecimal usedAmount = expenseMap.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalLimit = budget == null ? BigDecimal.ZERO : valueOrZero(budget.getTotalLimit());
         BigDecimal warningRate = budget == null ? DEFAULT_WARNING_RATE : budget.getWarningRate();
+        BudgetForecast forecast = forecast(book, month, totalLimit, usedAmount);
         return new BudgetOutDTO(
                 budget == null ? null : budget.getId(),
                 budget == null ? null : budget.getBudgetNo(),
@@ -159,6 +161,13 @@ public class BudgetService {
                 usagePercent(totalLimit, usedAmount),
                 budget == null ? 1 : budget.getStatus(),
                 usageStatus(totalLimit, usedAmount, warningRate),
+                alertLevel(totalLimit, usedAmount, warningRate),
+                forecast.daysElapsed,
+                forecast.daysRemaining,
+                forecast.dailyAvailable,
+                forecast.forecastExpense,
+                forecast.forecastRemaining,
+                forecast.forecastOverBudget,
                 book.getCurrencyCode(),
                 items
         );
@@ -261,7 +270,47 @@ public class BudgetService {
         return rate.compareTo(warningRate) >= 0 ? "WARN" : "OK";
     }
 
+    private String alertLevel(BigDecimal limit, BigDecimal used, BigDecimal warningRate) {
+        if (valueOrZero(limit).compareTo(BigDecimal.ZERO) <= 0) {
+            return "UNSET";
+        }
+        BigDecimal rate = usageRate(limit, used);
+        if (rate.compareTo(BigDecimal.ONE) >= 0) {
+            return "OVER";
+        }
+        if (rate.compareTo(warningRate) >= 0) {
+            return "WARNING";
+        }
+        return rate.compareTo(new BigDecimal("0.5000")) >= 0 ? "ATTENTION" : "NORMAL";
+    }
+
+    private BudgetForecast forecast(BookEntity book, YearMonth month, BigDecimal totalLimit, BigDecimal usedAmount) {
+        LocalDate today = LocalDate.now(ZoneId.of(book.getTimezone()));
+        YearMonth currentMonth = YearMonth.from(today);
+        int daysInMonth = month.lengthOfMonth();
+        int elapsed = month.isBefore(currentMonth) ? daysInMonth
+                : month.isAfter(currentMonth) ? 0 : today.getDayOfMonth();
+        int remainingDays = month.isBefore(currentMonth) ? 0
+                : month.isAfter(currentMonth) ? daysInMonth : daysInMonth - elapsed + 1;
+        BigDecimal remaining = totalLimit.subtract(usedAmount).max(BigDecimal.ZERO);
+        BigDecimal dailyAvailable = remainingDays == 0 ? BigDecimal.ZERO
+                : remaining.divide(BigDecimal.valueOf(remainingDays), 2, RoundingMode.HALF_UP);
+        if (elapsed < 3) {
+            return new BudgetForecast(elapsed, remainingDays, dailyAvailable, null, null, null);
+        }
+        BigDecimal forecastExpense = usedAmount.divide(BigDecimal.valueOf(elapsed), 8, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(daysInMonth)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal forecastRemaining = totalLimit.subtract(forecastExpense).setScale(2, RoundingMode.HALF_UP);
+        return new BudgetForecast(elapsed, remainingDays, dailyAvailable, forecastExpense, forecastRemaining,
+                forecastExpense.compareTo(totalLimit) > 0);
+    }
+
     private BigDecimal valueOrZero(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private record BudgetForecast(int daysElapsed, int daysRemaining, BigDecimal dailyAvailable,
+                                  BigDecimal forecastExpense, BigDecimal forecastRemaining,
+                                  Boolean forecastOverBudget) {
     }
 }

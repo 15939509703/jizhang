@@ -112,6 +112,24 @@ class BudgetServiceTest {
         assertThrows(BusinessException.class, () -> service.saveBudget(7L, input));
     }
 
+    @Test
+    void shouldReturnExpectedAlertLevelAtEachThreshold() {
+        BudgetEntity budget = activeBudget();
+        budget.setTotalLimit(new BigDecimal("100.00"));
+        when(bookMapper.selectById(1L)).thenReturn(activeBook());
+        when(budgetMapper.selectOne(any(Wrapper.class))).thenReturn(budget);
+        when(budgetItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(categoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(transactionMapper.selectExpenseByCategory(any(), any(), any())).thenReturn(
+                List.of(expense("49.99")), List.of(expense("50.00")),
+                List.of(expense("80.00")), List.of(expense("100.00")));
+
+        assertEquals("NORMAL", service.getBudget(7L, 1L, YearMonth.of(2020, 1)).alertLevel());
+        assertEquals("ATTENTION", service.getBudget(7L, 1L, YearMonth.of(2020, 1)).alertLevel());
+        assertEquals("WARNING", service.getBudget(7L, 1L, YearMonth.of(2020, 1)).alertLevel());
+        assertEquals("OVER", service.getBudget(7L, 1L, YearMonth.of(2020, 1)).alertLevel());
+    }
+
     private BudgetSaveInDTO saveInput() {
         return new BudgetSaveInDTO(1L, "2026-07", new BigDecimal("5000.00"),
                 new BigDecimal("0.8000"), List.of(
@@ -166,6 +184,13 @@ class BudgetServiceTest {
         CategoryExpenseAggregate aggregate = new CategoryExpenseAggregate();
         aggregate.setCategoryId(20L);
         aggregate.setExpenseAmount(new BigDecimal("45.00"));
+        return aggregate;
+    }
+
+    private CategoryExpenseAggregate expense(String amount) {
+        CategoryExpenseAggregate aggregate = new CategoryExpenseAggregate();
+        aggregate.setCategoryId(20L);
+        aggregate.setExpenseAmount(new BigDecimal(amount));
         return aggregate;
     }
 }

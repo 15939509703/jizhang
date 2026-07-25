@@ -74,6 +74,15 @@ springdoc:
     tags-sorter: alpha
   paths-to-match: /api/**
 
+jizhang:
+  features:
+    recurring-transactions: ${FEATURE_RECURRING_TRANSACTIONS:true}
+    transaction-calendar: ${FEATURE_TRANSACTION_CALENDAR:true}
+    budget-forecast: ${FEATURE_BUDGET_FORECAST:true}
+    asset-dashboard: ${FEATURE_ASSET_DASHBOARD:true}
+  recurring:
+    scan-interval-ms: ${RECURRING_SCAN_INTERVAL_MS:300000}
+
 logging:
   pattern:
     level: "%5p [traceId=%X{traceId:-}]"

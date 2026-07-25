@@ -29,3 +29,13 @@ databaseChangeLog:
             encoding: UTF-8
             splitStatements: true
             stripComments: false
+  - changeSet:
+      id: jizhang-1.1.0-feature-expansion
+      author: jizhang
+      changes:
+        - sqlFile:
+            path: 004-feature-expansion.sql
+            relativeToChangelogFile: true
+            encoding: UTF-8
+            splitStatements: true
+            stripComments: false

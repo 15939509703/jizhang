@@ -25,6 +25,7 @@ public class AccountEntity {
     private Integer status;
     private Integer version;
     private Integer deletedFlag;
+    private LocalDateTime archivedTime;
     private String creator;
     private LocalDateTime createdTime;
     private String modifier;

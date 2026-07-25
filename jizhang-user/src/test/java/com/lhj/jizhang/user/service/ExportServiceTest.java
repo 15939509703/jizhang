@@ -9,6 +9,7 @@ import com.lhj.jizhang.user.mapper.AccountMapper;
 import com.lhj.jizhang.user.mapper.CategoryMapper;
 import com.lhj.jizhang.user.mapper.ExportTaskMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
+import com.lhj.jizhang.user.model.BookPermission;
 import org.apache.poi.ss.usermodel.IndexedColors;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -59,7 +60,7 @@ class ExportServiceTest {
             assertEquals("10.00", sheet.getRow(1).getCell(5).getStringCellValue());
             assertEquals("", sheet.getRow(1).getCell(7).getStringCellValue());
         }
-        verify(bookAccessService).requireMember(7L, 1L);
+        verify(bookAccessService).requirePermission(7L, 1L, BookPermission.EXPORT_DATA);
     }
 
     private ExportTaskEntity exportTask() {

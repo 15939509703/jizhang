@@ -1,0 +1,68 @@
+-- Feature expansion: recurring transactions and asset history support.
+
+ALTER TABLE `fin_account`
+  ADD COLUMN `archived_time` DATETIME(3) DEFAULT NULL COMMENT '账户停用或删除时间' AFTER `deleted_flag`;
+
+CREATE TABLE `fin_recurring_rule` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `rule_no` VARCHAR(40) NOT NULL COMMENT '周期规则业务编号',
+  `book_id` BIGINT UNSIGNED NOT NULL COMMENT '账本ID',
+  `created_user_id` BIGINT UNSIGNED NOT NULL COMMENT '规则创建人',
+  `transaction_type` VARCHAR(16) NOT NULL COMMENT '类型：EXPENSE、INCOME、TRANSFER',
+  `category_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '收支分类ID',
+  `account_id` BIGINT UNSIGNED NOT NULL COMMENT '主账户或转出账户ID',
+  `target_account_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '转入账户ID',
+  `amount` DECIMAL(19,2) NOT NULL COMMENT '金额',
+  `title` VARCHAR(128) NOT NULL COMMENT '账单标题',
+  `note` VARCHAR(1000) DEFAULT NULL COMMENT '备注',
+  `recurrence_type` VARCHAR(16) NOT NULL DEFAULT 'MONTHLY' COMMENT '周期类型',
+  `execution_day` TINYINT UNSIGNED NOT NULL COMMENT '每月执行日',
+  `month_end_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '是否月末执行',
+  `execution_time` TIME NOT NULL DEFAULT '08:00:00' COMMENT '账本时区执行时间',
+  `start_date` DATE NOT NULL COMMENT '开始日期',
+  `end_date` DATE DEFAULT NULL COMMENT '结束日期',
+  `next_execution_date` DATE DEFAULT NULL COMMENT '下一计划日期',
+  `last_execution_date` DATE DEFAULT NULL COMMENT '最近处理日期',
+  `execution_mode` VARCHAR(16) NOT NULL COMMENT '执行方式：AUTO、CONFIRM',
+  `status` VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE、PAUSED、COMPLETED',
+  `version` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+  `deleted_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除标记',
+  `creator` VARCHAR(64) NOT NULL DEFAULT 'system' COMMENT '创建人',
+  `created_time` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  `modifier` VARCHAR(64) NOT NULL DEFAULT 'system' COMMENT '修改人',
+  `modified_time` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '修改时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_recurring_rule_no` (`rule_no`),
+  KEY `idx_recurring_rule_due` (`status`, `next_execution_date`, `deleted_flag`),
+  KEY `idx_recurring_rule_book` (`book_id`, `status`, `deleted_flag`),
+  CONSTRAINT `fk_recurring_rule_book` FOREIGN KEY (`book_id`) REFERENCES `fin_book` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `fk_recurring_rule_user` FOREIGN KEY (`created_user_id`) REFERENCES `sys_user` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `fk_recurring_rule_category` FOREIGN KEY (`category_id`) REFERENCES `fin_category` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `fk_recurring_rule_account` FOREIGN KEY (`account_id`) REFERENCES `fin_account` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `fk_recurring_rule_target_account` FOREIGN KEY (`target_account_id`) REFERENCES `fin_account` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `ck_recurring_rule_amount` CHECK (`amount` > 0),
+  CONSTRAINT `ck_recurring_rule_day` CHECK (`execution_day` BETWEEN 1 AND 31),
+  CONSTRAINT `ck_recurring_rule_accounts` CHECK (`target_account_id` IS NULL OR `target_account_id` <> `account_id`)
+) ENGINE=InnoDB COMMENT='周期账单规则表';
+
+CREATE TABLE `fin_recurring_execution` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `rule_id` BIGINT UNSIGNED NOT NULL COMMENT '周期规则ID',
+  `scheduled_date` DATE NOT NULL COMMENT '计划日期',
+  `transaction_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '关联账单ID',
+  `execution_status` VARCHAR(16) NOT NULL COMMENT '状态：PENDING、PROCESSING、SUCCESS、SKIPPED、FAILED',
+  `failure_reason` VARCHAR(500) DEFAULT NULL COMMENT '失败原因',
+  `executed_time` DATETIME(3) DEFAULT NULL COMMENT '处理时间',
+  `handled_user_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '人工处理用户ID',
+  `creator` VARCHAR(64) NOT NULL DEFAULT 'system' COMMENT '创建人',
+  `created_time` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+  `modifier` VARCHAR(64) NOT NULL DEFAULT 'system' COMMENT '修改人',
+  `modified_time` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '修改时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_recurring_execution_rule_date` (`rule_id`, `scheduled_date`),
+  KEY `idx_recurring_execution_status_date` (`execution_status`, `scheduled_date`),
+  KEY `idx_recurring_execution_transaction` (`transaction_id`),
+  CONSTRAINT `fk_recurring_execution_rule` FOREIGN KEY (`rule_id`) REFERENCES `fin_recurring_rule` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `fk_recurring_execution_transaction` FOREIGN KEY (`transaction_id`) REFERENCES `fin_transaction` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `fk_recurring_execution_user` FOREIGN KEY (`handled_user_id`) REFERENCES `sys_user` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE=InnoDB COMMENT='周期账单执行记录表';

@@ -19,6 +19,14 @@ import com.lhj.jizhang.user.mapper.AccountMapper;
 import com.lhj.jizhang.user.mapper.BookMapper;
 import com.lhj.jizhang.user.mapper.CategoryMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
+import com.lhj.jizhang.user.mapper.ReimbursementMapper;
+import com.lhj.jizhang.user.mapper.SavingsContributionMapper;
+import com.lhj.jizhang.user.mapper.SavingsGoalMapper;
+import com.lhj.jizhang.user.entity.ReimbursementEntity;
+import com.lhj.jizhang.user.entity.SavingsContributionEntity;
+import com.lhj.jizhang.user.entity.SavingsGoalEntity;
+import com.lhj.jizhang.user.model.BookPermission;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +56,10 @@ public class TransactionService {
     private final CategoryMapper categoryMapper;
     private final BookMapper bookMapper;
     private final BookAccessService bookAccessService;
+    private ReimbursementMapper reimbursementMapper;
+    private SavingsContributionMapper savingsContributionMapper;
+    private SavingsGoalMapper savingsGoalMapper;
+    private BudgetAlertNotificationService budgetAlertNotificationService;
 
     public TransactionService(
             TransactionMapper transactionMapper,
@@ -63,6 +75,20 @@ public class TransactionService {
         this.categoryMapper = categoryMapper;
         this.bookMapper = bookMapper;
         this.bookAccessService = bookAccessService;
+    }
+
+    @Autowired(required = false)
+    void setFollowupMappers(ReimbursementMapper reimbursementMapper,
+                            SavingsContributionMapper savingsContributionMapper,
+                            SavingsGoalMapper savingsGoalMapper) {
+        this.reimbursementMapper = reimbursementMapper;
+        this.savingsContributionMapper = savingsContributionMapper;
+        this.savingsGoalMapper = savingsGoalMapper;
+    }
+
+    @Autowired(required = false)
+    void setBudgetAlertNotificationService(BudgetAlertNotificationService service) {
+        this.budgetAlertNotificationService = service;
     }
 
     @Transactional
@@ -82,6 +108,7 @@ public class TransactionService {
             return toOutput(persisted, loadEntries(List.of(persisted.getId())).get(persisted.getId()));
         }
         applyEntries(transaction, input, accounts, userId);
+        if (budgetAlertNotificationService != null) budgetAlertNotificationService.onExpenseCreated(userId, transaction);
         return toOutput(transaction, loadEntries(List.of(transaction.getId())).get(transaction.getId()));
     }
 
@@ -174,6 +201,9 @@ public class TransactionService {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "账单不存在");
         }
         bookAccessService.requireWritable(userId, transaction.getBookId());
+        bookAccessService.requirePermission(userId, transaction.getBookId(),
+                userId.equals(transaction.getCreatedUserId())
+                        ? BookPermission.EDIT_OWN_TRANSACTIONS : BookPermission.EDIT_ALL_TRANSACTIONS);
         if (!"EFFECTIVE".equals(transaction.getStatus()) || !input.version().equals(transaction.getVersion())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "账单已发生变化，请刷新后重试");
         }
@@ -201,12 +231,16 @@ public class TransactionService {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "账单不存在");
         }
         bookAccessService.requireWritable(userId, transaction.getBookId());
+        bookAccessService.requirePermission(userId, transaction.getBookId(),
+                userId.equals(transaction.getCreatedUserId())
+                        ? BookPermission.EDIT_OWN_TRANSACTIONS : BookPermission.EDIT_ALL_TRANSACTIONS);
         if ("VOIDED".equals(transaction.getStatus())) {
             return toOutput(transaction, loadEntries(List.of(transactionId)).get(transactionId));
         }
         if (!"EFFECTIVE".equals(transaction.getStatus())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "当前账单状态不允许作废");
         }
+        validateFollowupVoid(transaction);
         List<AccountEntryEntity> originalEntries = originalEntries(transactionId);
         Map<Long, AccountEntity> accounts = lockAccounts(transaction.getBookId(), originalEntries.stream()
                 .map(AccountEntryEntity::getAccountId).collect(Collectors.toSet()));
@@ -215,7 +249,53 @@ public class TransactionService {
         transaction.setVersion(transaction.getVersion() + 1);
         transaction.setModifier(String.valueOf(userId));
         transactionMapper.updateById(transaction);
+        updateFollowupAfterVoid(transaction, userId);
         return toOutput(transaction, loadEntries(List.of(transactionId)).get(transactionId));
+    }
+
+    private void validateFollowupVoid(TransactionEntity transaction) {
+        if (reimbursementMapper == null) return;
+        ReimbursementEntity reimbursement = reimbursementMapper.selectOne(Wrappers.<ReimbursementEntity>lambdaQuery()
+                .eq(ReimbursementEntity::getExpenseTransactionId, transaction.getId())
+                .in(ReimbursementEntity::getStatus, "PENDING", "REIMBURSED"));
+        if (reimbursement != null) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "请先取消报销项目再作废原支出");
+        }
+    }
+
+    private void updateFollowupAfterVoid(TransactionEntity transaction, Long userId) {
+        if (reimbursementMapper != null) {
+            ReimbursementEntity reimbursement = reimbursementMapper.selectOne(Wrappers.<ReimbursementEntity>lambdaQuery()
+                    .eq(ReimbursementEntity::getReimbursementTransactionId, transaction.getId())
+                    .eq(ReimbursementEntity::getStatus, "REIMBURSED"));
+            if (reimbursement != null) {
+                reimbursement.setReimbursementTransactionId(null);
+                reimbursement.setReimbursedTime(null);
+                reimbursement.setStatus("PENDING");
+                reimbursement.setVersion(reimbursement.getVersion() + 1);
+                reimbursement.setModifier(String.valueOf(userId));
+                reimbursementMapper.updateById(reimbursement);
+            }
+        }
+        if (savingsContributionMapper != null) {
+            SavingsContributionEntity contribution = savingsContributionMapper.selectOne(
+                    Wrappers.<SavingsContributionEntity>lambdaQuery()
+                            .eq(SavingsContributionEntity::getTransactionId, transaction.getId())
+                            .eq(SavingsContributionEntity::getStatus, "EFFECTIVE"));
+            if (contribution != null) {
+                contribution.setStatus("VOIDED");
+                contribution.setModifier(String.valueOf(userId));
+                savingsContributionMapper.updateById(contribution);
+                SavingsGoalEntity goal = savingsGoalMapper.selectById(contribution.getGoalId());
+                BigDecimal completed = goal.getInitialAmount().add(savingsContributionMapper.sumEffective(goal.getId()));
+                if ("COMPLETED".equals(goal.getStatus()) && completed.compareTo(goal.getTargetAmount()) < 0) {
+                    goal.setStatus("ACTIVE");
+                    goal.setVersion(goal.getVersion() + 1);
+                    goal.setModifier(String.valueOf(userId));
+                    savingsGoalMapper.updateById(goal);
+                }
+            }
+        }
     }
 
     private void validateInput(TransactionCreateInDTO input) {

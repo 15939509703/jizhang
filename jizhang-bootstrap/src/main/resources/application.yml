@@ -38,6 +38,7 @@ mybatis-plus:
 app:
   storage:
     upload-dir: ${UPLOAD_DIR:./data/uploads}
+    backup-dir: ${BACKUP_DIR:./data/backups}
   logging:
     http:
       include-body: ${HTTP_LOG_INCLUDE_BODY:true}
@@ -46,6 +47,12 @@ app:
     app-id: ${WX_APP_ID}
     app-secret: ${WX_APP_SECRET}
     code2-session-url: https://api.weixin.qq.com/sns/jscode2session
+    notification:
+      enabled: ${WX_NOTIFICATION_ENABLED:false}
+      recurring-template-id: ${WX_RECURRING_TEMPLATE_ID:}
+      budget-template-id: ${WX_BUDGET_TEMPLATE_ID:}
+      token-url: https://api.weixin.qq.com/cgi-bin/token
+      send-url: https://api.weixin.qq.com/cgi-bin/message/subscribe/send
   security:
     jwt:
       issuer: jizhang-server
@@ -80,6 +87,12 @@ jizhang:
     transaction-calendar: ${FEATURE_TRANSACTION_CALENDAR:true}
     budget-forecast: ${FEATURE_BUDGET_FORECAST:true}
     asset-dashboard: ${FEATURE_ASSET_DASHBOARD:true}
+    reimbursement: ${FEATURE_REIMBURSEMENT:true}
+    savings-goals: ${FEATURE_SAVINGS_GOALS:true}
+    consumption-reports: ${FEATURE_CONSUMPTION_REPORTS:true}
+    data-security: ${FEATURE_DATA_SECURITY:true}
+    family-sharing: ${FEATURE_FAMILY_SHARING:true}
+    wechat-subscriptions: ${FEATURE_WECHAT_SUBSCRIPTIONS:true}
   recurring:
     scan-interval-ms: ${RECURRING_SCAN_INTERVAL_MS:300000}
 

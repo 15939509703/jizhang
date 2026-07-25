@@ -5,15 +5,26 @@ import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
 import com.lhj.jizhang.user.entity.BookMemberEntity;
 import com.lhj.jizhang.user.mapper.BookMemberMapper;
+import com.lhj.jizhang.user.model.BookPermission;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
 public class BookAccessService {
     private final BookMemberMapper bookMemberMapper;
+    private final ObjectMapper objectMapper;
 
-    public BookAccessService(BookMemberMapper bookMemberMapper) {
+    @Autowired
+    public BookAccessService(BookMemberMapper bookMemberMapper, ObjectMapper objectMapper) {
         this.bookMemberMapper = bookMemberMapper;
+        this.objectMapper = objectMapper;
+    }
+
+    BookAccessService(BookMemberMapper bookMemberMapper) {
+        this(bookMemberMapper, new ObjectMapper());
     }
 
     public BookMemberEntity requireMember(Long userId, Long bookId) {
@@ -28,11 +39,7 @@ public class BookAccessService {
     }
 
     public BookMemberEntity requireWritable(Long userId, Long bookId) {
-        BookMemberEntity member = requireMember(userId, bookId);
-        if ("VIEWER".equals(member.getRole())) {
-            throw new BusinessException(ErrorCodes.BOOK_ACCESS_DENIED, "当前成员仅有查看权限", HttpStatus.FORBIDDEN);
-        }
-        return member;
+        return requirePermission(userId, bookId, BookPermission.CREATE_TRANSACTIONS);
     }
 
     public BookMemberEntity requireAdmin(Long userId, Long bookId) {
@@ -51,5 +58,34 @@ public class BookAccessService {
                     HttpStatus.FORBIDDEN);
         }
         return member;
+    }
+
+    public BookMemberEntity requirePermission(Long userId, Long bookId, BookPermission permission) {
+        BookMemberEntity member = requireMember(userId, bookId);
+        if (!hasPermission(member, permission)) {
+            throw new BusinessException(ErrorCodes.BOOK_ACCESS_DENIED, "当前成员无此操作权限", HttpStatus.FORBIDDEN);
+        }
+        return member;
+    }
+
+    public boolean hasPermission(BookMemberEntity member, BookPermission permission) {
+        if ("OWNER".equals(member.getRole())) return true;
+        Boolean override = permissionOverride(member.getPermissions(), permission.name());
+        if (override != null) return override;
+        return switch (member.getRole()) {
+            case "ADMIN" -> true;
+            case "MEMBER" -> permission != BookPermission.MANAGE_MEMBERS;
+            case "VIEWER" -> permission == BookPermission.VIEW_TRANSACTIONS;
+            default -> false;
+        };
+    }
+
+    private Boolean permissionOverride(String json, String key) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return objectMapper.readValue(json, new TypeReference<java.util.Map<String, Boolean>>() {}).get(key);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

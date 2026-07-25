@@ -18,11 +18,16 @@ public interface TransactionMapper extends BaseMapper<TransactionEntity> {
             SELECT
                 COALESCE(SUM(CASE WHEN transaction_type = 'INCOME' THEN amount ELSE 0 END), 0) AS income_amount,
                 COALESCE(SUM(CASE WHEN transaction_type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS expense_amount
-            FROM fin_transaction
-            WHERE book_id = #{bookId}
-              AND status = 'EFFECTIVE'
-              AND happened_at >= #{startAt}
-              AND happened_at < #{endAt}
+            FROM fin_transaction t
+            WHERE t.book_id = #{bookId}
+              AND t.status = 'EFFECTIVE'
+              AND t.happened_at >= #{startAt}
+              AND t.happened_at < #{endAt}
+              AND NOT EXISTS (
+                SELECT 1 FROM fin_reimbursement r
+                WHERE (r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+                   OR (r.reimbursement_transaction_id = t.id AND r.status = 'REIMBURSED')
+              )
             """)
     TransactionSummaryAggregate selectSummary(
             @Param("bookId") Long bookId,
@@ -34,13 +39,15 @@ public interface TransactionMapper extends BaseMapper<TransactionEntity> {
             SELECT
                 category_id,
                 COALESCE(SUM(amount), 0) AS expense_amount
-            FROM fin_transaction
-            WHERE book_id = #{bookId}
-              AND transaction_type = 'EXPENSE'
-              AND status = 'EFFECTIVE'
-              AND happened_at >= #{startAt}
-              AND happened_at < #{endAt}
-            GROUP BY category_id
+            FROM fin_transaction t
+            WHERE t.book_id = #{bookId}
+              AND t.transaction_type = 'EXPENSE'
+              AND t.status = 'EFFECTIVE'
+              AND t.happened_at >= #{startAt}
+              AND t.happened_at < #{endAt}
+              AND NOT EXISTS (SELECT 1 FROM fin_reimbursement r
+                WHERE r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+            GROUP BY t.category_id
             """)
     List<CategoryExpenseAggregate> selectExpenseByCategory(
             @Param("bookId") Long bookId,

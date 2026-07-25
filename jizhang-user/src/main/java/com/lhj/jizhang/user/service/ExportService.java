@@ -18,6 +18,7 @@ import com.lhj.jizhang.user.mapper.AccountMapper;
 import com.lhj.jizhang.user.mapper.CategoryMapper;
 import com.lhj.jizhang.user.mapper.ExportTaskMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
+import com.lhj.jizhang.user.model.BookPermission;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.FillPatternType;
@@ -90,7 +91,7 @@ public class ExportService {
 
     @Transactional
     public ExportTaskOutDTO create(Long userId, ExportCreateInDTO input) {
-        bookAccessService.requireMember(userId, input.bookId());
+        bookAccessService.requirePermission(userId, input.bookId(), BookPermission.EXPORT_DATA);
         validateInput(input);
         ExportTaskEntity task = new ExportTaskEntity();
         task.setTaskNo(BusinessIdGenerator.next("EXP_"));
@@ -308,7 +309,7 @@ public class ExportService {
         if (task == null || !userId.equals(task.getUserId())) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "导出任务不存在");
         }
-        bookAccessService.requireMember(userId, task.getBookId());
+        bookAccessService.requirePermission(userId, task.getBookId(), BookPermission.EXPORT_DATA);
         return task;
     }
 

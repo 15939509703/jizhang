@@ -1,19 +1,34 @@
 package com.lhj.jizhang.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
 import com.lhj.jizhang.user.entity.BookMemberEntity;
 import com.lhj.jizhang.user.mapper.BookMemberMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class BookAccessServiceTest {
+    @Test
+    void shouldCreateBeanWithProductionDependencies() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(BookMemberMapper.class, () -> mock(BookMemberMapper.class));
+            context.registerBean(ObjectMapper.class, () -> new ObjectMapper());
+            context.register(BookAccessService.class);
+            context.refresh();
+
+            assertNotNull(context.getBean(BookAccessService.class));
+        }
+    }
+
     @Test
     void shouldRejectNonMember() {
         BookMemberMapper mapper = mock(BookMemberMapper.class);

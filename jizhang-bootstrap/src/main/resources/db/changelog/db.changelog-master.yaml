@@ -39,3 +39,13 @@ databaseChangeLog:
             encoding: UTF-8
             splitStatements: true
             stripComments: false
+  - changeSet:
+      id: jizhang-1.2.0-free-followup-features
+      author: jizhang
+      changes:
+        - sqlFile:
+            path: 005-free-followup-features.sql
+            relativeToChangelogFile: true
+            encoding: UTF-8
+            splitStatements: true
+            stripComments: false

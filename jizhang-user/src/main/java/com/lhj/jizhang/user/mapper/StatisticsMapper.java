@@ -13,9 +13,12 @@ public interface StatisticsMapper {
             SELECT DATE_FORMAT(CONVERT_TZ(happened_at, '+00:00', #{timezoneOffset}), '%Y-%m-%d') AS period_key,
                    COALESCE(SUM(CASE WHEN transaction_type = 'INCOME' THEN amount ELSE 0 END), 0) AS income_amount,
                    COALESCE(SUM(CASE WHEN transaction_type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS expense_amount
-            FROM fin_transaction
-            WHERE book_id = #{bookId} AND status = 'EFFECTIVE'
-              AND happened_at >= #{startAt} AND happened_at < #{endAt}
+            FROM fin_transaction t
+            WHERE t.book_id = #{bookId} AND t.status = 'EFFECTIVE'
+              AND t.happened_at >= #{startAt} AND t.happened_at < #{endAt}
+              AND NOT EXISTS (SELECT 1 FROM fin_reimbursement r
+                WHERE (r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+                   OR (r.reimbursement_transaction_id = t.id AND r.status = 'REIMBURSED'))
             GROUP BY period_key ORDER BY period_key
             """)
     List<StatisticsPeriodAggregate> selectDaily(
@@ -29,9 +32,12 @@ public interface StatisticsMapper {
             SELECT DATE_FORMAT(CONVERT_TZ(happened_at, '+00:00', #{timezoneOffset}), '%Y-%m') AS period_key,
                    COALESCE(SUM(CASE WHEN transaction_type = 'INCOME' THEN amount ELSE 0 END), 0) AS income_amount,
                    COALESCE(SUM(CASE WHEN transaction_type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS expense_amount
-            FROM fin_transaction
-            WHERE book_id = #{bookId} AND status = 'EFFECTIVE'
-              AND happened_at >= #{startAt} AND happened_at < #{endAt}
+            FROM fin_transaction t
+            WHERE t.book_id = #{bookId} AND t.status = 'EFFECTIVE'
+              AND t.happened_at >= #{startAt} AND t.happened_at < #{endAt}
+              AND NOT EXISTS (SELECT 1 FROM fin_reimbursement r
+                WHERE (r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+                   OR (r.reimbursement_transaction_id = t.id AND r.status = 'REIMBURSED'))
             GROUP BY period_key ORDER BY period_key
             """)
     List<StatisticsPeriodAggregate> selectMonthly(
@@ -50,6 +56,9 @@ public interface StatisticsMapper {
             WHERE t.book_id = #{bookId} AND t.status = 'EFFECTIVE'
               AND t.transaction_type = #{type}
               AND t.happened_at >= #{startAt} AND t.happened_at < #{endAt}
+              AND NOT EXISTS (SELECT 1 FROM fin_reimbursement r
+                WHERE (r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+                   OR (r.reimbursement_transaction_id = t.id AND r.status = 'REIMBURSED'))
             GROUP BY c.id, c.name ORDER BY SUM(t.amount) DESC, c.id
             """)
     List<StatisticsBreakdownAggregate> selectCategoryBreakdown(
@@ -70,6 +79,9 @@ public interface StatisticsMapper {
               AND t.transaction_type IN ('INCOME', 'EXPENSE')
               AND e.entry_type <> 'REVERSAL'
               AND t.happened_at >= #{startAt} AND t.happened_at < #{endAt}
+              AND NOT EXISTS (SELECT 1 FROM fin_reimbursement r
+                WHERE (r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+                   OR (r.reimbursement_transaction_id = t.id AND r.status = 'REIMBURSED'))
             GROUP BY a.id, a.name ORDER BY SUM(t.amount) DESC, a.id
             """)
     List<StatisticsBreakdownAggregate> selectAccountBreakdown(

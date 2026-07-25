@@ -32,11 +32,11 @@ public class PasswordCredentialService {
     public void bind(Long userId, PasswordCredentialInDTO input) {
         requireActiveUser(userId);
         String username = normalize(input.username());
-        UserCredentialEntity sameUsername = findByUsername(username);
+        UserCredentialEntity sameUsername = findAnyByUsername(username);
         if (sameUsername != null && !sameUsername.getUserId().equals(userId)) {
             throw new BusinessException(ErrorCodes.PASSWORD_CREDENTIAL_EXISTS, "登录账号已被使用");
         }
-        UserCredentialEntity credential = findByUserId(userId);
+        UserCredentialEntity credential = findAnyByUserId(userId);
         if (credential == null) {
             credential = newCredential(userId, username, input.password());
             credentialMapper.insert(credential);
@@ -52,10 +52,20 @@ public class PasswordCredentialService {
                 .eq(UserCredentialEntity::getStatus, 1));
     }
 
+    public UserCredentialEntity findAnyByUsername(String username) {
+        return credentialMapper.selectOne(Wrappers.<UserCredentialEntity>lambdaQuery()
+                .eq(UserCredentialEntity::getUsername, normalize(username)));
+    }
+
     public UserCredentialEntity findByUserId(Long userId) {
         return credentialMapper.selectOne(Wrappers.<UserCredentialEntity>lambdaQuery()
                 .eq(UserCredentialEntity::getUserId, userId)
                 .eq(UserCredentialEntity::getStatus, 1));
+    }
+
+    private UserCredentialEntity findAnyByUserId(Long userId) {
+        return credentialMapper.selectOne(Wrappers.<UserCredentialEntity>lambdaQuery()
+                .eq(UserCredentialEntity::getUserId, userId));
     }
 
     public boolean matches(String password, String passwordHash) {
@@ -102,6 +112,7 @@ public class PasswordCredentialService {
         credential.setPasswordHash(passwordEncoder.encode(password));
         credential.setFailedCount(0);
         credential.setLockedUntil(null);
+        credential.setStatus(1);
         credential.setModifier(String.valueOf(userId));
     }
 

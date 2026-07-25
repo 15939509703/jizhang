@@ -32,6 +32,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/wechat/login",
                                 "/api/v1/auth/password/login",
+                                "/api/v1/auth/phone/register",
                                 "/api/v1/auth/refresh",
                                 "/actuator/health",
                                 "/v3/api-docs/**",

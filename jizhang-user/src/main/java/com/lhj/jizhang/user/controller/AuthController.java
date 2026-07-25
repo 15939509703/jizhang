@@ -7,10 +7,15 @@ import com.lhj.jizhang.user.dto.RefreshTokenInDTO;
 import com.lhj.jizhang.user.dto.RefreshTokenOutDTO;
 import com.lhj.jizhang.user.dto.PasswordCredentialInDTO;
 import com.lhj.jizhang.user.dto.PasswordLoginInDTO;
+import com.lhj.jizhang.user.dto.PhoneBindInDTO;
+import com.lhj.jizhang.user.dto.PhoneBindingOutDTO;
+import com.lhj.jizhang.user.dto.PhoneRegisterInDTO;
 import com.lhj.jizhang.user.dto.WechatLoginInDTO;
 import com.lhj.jizhang.user.dto.WechatLoginOutDTO;
 import com.lhj.jizhang.user.service.PasswordCredentialService;
 import com.lhj.jizhang.user.service.PasswordLoginService;
+import com.lhj.jizhang.user.service.PhoneBindingService;
+import com.lhj.jizhang.user.service.PhoneRegistrationService;
 import com.lhj.jizhang.user.service.WechatLoginService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,17 +33,23 @@ import com.lhj.jizhang.security.model.AuthenticatedUser;
 public class AuthController {
     private final WechatLoginService wechatLoginService;
     private final PasswordLoginService passwordLoginService;
+    private final PhoneRegistrationService phoneRegistrationService;
+    private final PhoneBindingService phoneBindingService;
     private final PasswordCredentialService passwordCredentialService;
     private final TokenService tokenService;
 
     public AuthController(
             WechatLoginService wechatLoginService,
             PasswordLoginService passwordLoginService,
+            PhoneRegistrationService phoneRegistrationService,
+            PhoneBindingService phoneBindingService,
             PasswordCredentialService passwordCredentialService,
             TokenService tokenService
     ) {
         this.wechatLoginService = wechatLoginService;
         this.passwordLoginService = passwordLoginService;
+        this.phoneRegistrationService = phoneRegistrationService;
+        this.phoneBindingService = phoneBindingService;
         this.passwordCredentialService = passwordCredentialService;
         this.tokenService = tokenService;
     }
@@ -53,6 +64,30 @@ public class AuthController {
     @PostMapping("/password/login")
     public ApiResponse<WechatLoginOutDTO> passwordLogin(@RequestBody @Valid PasswordLoginInDTO input) {
         return ApiResponse.success(passwordLoginService.login(input));
+    }
+
+    @Operation(summary = "手机号注册", description = "首次注册时优先登录已绑定该手机号的微信账号，否则创建新账号")
+    @PostMapping("/phone/register")
+    public ApiResponse<WechatLoginOutDTO> phoneRegister(@RequestBody @Valid PhoneRegisterInDTO input) {
+        return ApiResponse.success(phoneRegistrationService.register(input));
+    }
+
+    @Operation(summary = "微信账号绑定手机号登录")
+    @PostMapping("/phone/bind")
+    public ApiResponse<Void> bindPhone(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody @Valid PhoneBindInDTO input
+    ) {
+        phoneBindingService.bind(user.userId(), input);
+        return ApiResponse.success(null);
+    }
+
+    @Operation(summary = "查询手机号绑定状态")
+    @PostMapping("/phone/bind/status")
+    public ApiResponse<PhoneBindingOutDTO> phoneBindingStatus(
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return ApiResponse.success(phoneBindingService.status(user.userId()));
     }
 
     @Operation(summary = "绑定或更新网页登录凭证")

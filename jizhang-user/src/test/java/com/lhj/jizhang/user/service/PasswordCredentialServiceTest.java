@@ -1,5 +1,7 @@
 package com.lhj.jizhang.user.service;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.lhj.jizhang.user.dto.PasswordCredentialInDTO;
 import com.lhj.jizhang.user.entity.UserCredentialEntity;
 import com.lhj.jizhang.user.entity.UserEntity;
@@ -11,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -38,5 +41,15 @@ class PasswordCredentialServiceTest {
         assertEquals("my.account", credential.getUsername());
         assertNotEquals("strong-password", credential.getPasswordHash());
         assertTrue(new BCryptPasswordEncoder().matches("strong-password", credential.getPasswordHash()));
+    }
+
+    @Test
+    void lockedUntilAlwaysUpdatesSoPasswordResetCanClearLock() throws NoSuchFieldException {
+        TableField tableField = UserCredentialEntity.class
+                .getDeclaredField("lockedUntil")
+                .getAnnotation(TableField.class);
+
+        assertNotNull(tableField);
+        assertEquals(FieldStrategy.ALWAYS, tableField.updateStrategy());
     }
 }

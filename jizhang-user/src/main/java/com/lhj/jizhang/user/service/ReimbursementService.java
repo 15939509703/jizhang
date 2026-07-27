@@ -7,6 +7,7 @@ import com.lhj.jizhang.common.util.BusinessIdGenerator;
 import com.lhj.jizhang.user.dto.ReimbursementCreateInDTO;
 import com.lhj.jizhang.user.dto.ReimbursementOutDTO;
 import com.lhj.jizhang.user.dto.ReimbursementReceiveInDTO;
+import com.lhj.jizhang.user.dto.ReimbursementUpdateInDTO;
 import com.lhj.jizhang.user.dto.TransactionCreateInDTO;
 import com.lhj.jizhang.user.dto.TransactionOutDTO;
 import com.lhj.jizhang.user.entity.ReimbursementEntity;
@@ -17,6 +18,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -52,6 +55,16 @@ public class ReimbursementService {
 
     @Transactional
     public ReimbursementOutDTO create(Long userId, ReimbursementCreateInDTO input) {
+        if (input.expenseTransactionId() == null) {
+            return createManual(userId, input);
+        }
+        if (input.bookId() != null || input.expectedAmount() != null) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "关联账单和手动报销参数不能同时填写");
+        }
+        return createFromExpense(userId, input);
+    }
+
+    private ReimbursementOutDTO createFromExpense(Long userId, ReimbursementCreateInDTO input) {
         TransactionEntity expense = transactionMapper.selectById(input.expenseTransactionId());
         if (expense == null || !"EXPENSE".equals(expense.getTransactionType())
                 || !"EFFECTIVE".equals(expense.getStatus())) {
@@ -60,20 +73,11 @@ public class ReimbursementService {
         bookAccessService.requireWritable(userId, expense.getBookId());
         ReimbursementEntity existing = reimbursementMapper.selectOne(Wrappers.<ReimbursementEntity>lambdaQuery()
                 .eq(ReimbursementEntity::getExpenseTransactionId, expense.getId()));
-        if (existing != null) return toOutput(existing);
-        ReimbursementEntity entity = new ReimbursementEntity();
-        entity.setReimbursementNo(BusinessIdGenerator.next("RMB_"));
-        entity.setBookId(expense.getBookId());
-        entity.setExpenseTransactionId(expense.getId());
-        entity.setExpectedAmount(expense.getAmount());
-        entity.setReimburserName(trim(input.reimburserName()));
-        entity.setSubmittedDate(input.submittedDate());
-        entity.setExpectedDate(input.expectedDate());
-        entity.setStatus("PENDING");
-        entity.setNote(trim(input.note()));
-        entity.setVersion(0);
-        entity.setCreator(String.valueOf(userId));
-        entity.setModifier(String.valueOf(userId));
+        if (existing != null) {
+            return restoreOrReturn(userId, existing, input);
+        }
+        ReimbursementEntity entity = buildEntity(
+                userId, input, expense.getBookId(), expense.getId(), expense.getAmount());
         try {
             reimbursementMapper.insert(entity);
         } catch (DuplicateKeyException exception) {
@@ -81,6 +85,50 @@ public class ReimbursementService {
                     .eq(ReimbursementEntity::getExpenseTransactionId, expense.getId())));
         }
         return toOutput(entity);
+    }
+
+    private ReimbursementOutDTO createManual(Long userId, ReimbursementCreateInDTO input) {
+        validateManualInput(input.bookId(), input.expectedAmount());
+        bookAccessService.requireWritable(userId, input.bookId());
+        ReimbursementEntity entity = buildEntity(userId, input, input.bookId(), null, input.expectedAmount());
+        reimbursementMapper.insert(entity);
+        return toOutput(entity);
+    }
+
+    public ReimbursementOutDTO get(Long userId, Long id) {
+        ReimbursementEntity entity = reimbursementMapper.selectById(id);
+        if (entity == null) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "报销项目不存在");
+        }
+        bookAccessService.requireMember(userId, entity.getBookId());
+        return toOutput(entity);
+    }
+
+    @Transactional
+    public ReimbursementOutDTO update(Long userId, Long id, ReimbursementUpdateInDTO input) {
+        ReimbursementEntity entity = requireLocked(userId, id);
+        if (!"PENDING".equals(entity.getStatus())) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "只有待报销项目可以编辑");
+        }
+        if (!input.version().equals(entity.getVersion())) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "报销项目已发生变化，请刷新后重试");
+        }
+        applyExpectedAmount(entity, input.expectedAmount());
+        applyEditableFields(entity, input.reimburserName(), input.submittedDate(),
+                input.expectedDate(), input.note());
+        entity.setVersion(entity.getVersion() + 1);
+        entity.setModifier(String.valueOf(userId));
+        reimbursementMapper.updateById(entity);
+        return toOutput(entity);
+    }
+
+    @Transactional
+    public void delete(Long userId, Long id) {
+        ReimbursementEntity entity = requireLocked(userId, id);
+        if ("REIMBURSED".equals(entity.getStatus()) || entity.getReimbursementTransactionId() != null) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "请先作废报销到账账单");
+        }
+        reimbursementMapper.deleteById(entity.getId());
     }
 
     @Transactional
@@ -120,9 +168,67 @@ public class ReimbursementService {
 
     private ReimbursementEntity requireLocked(Long userId, Long id) {
         ReimbursementEntity entity = reimbursementMapper.selectByIdForUpdate(id);
-        if (entity == null) throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "报销项目不存在");
+        if (entity == null) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "报销项目不存在");
+        }
         bookAccessService.requireWritable(userId, entity.getBookId());
         return entity;
+    }
+
+    private ReimbursementOutDTO restoreOrReturn(Long userId, ReimbursementEntity entity,
+                                                 ReimbursementCreateInDTO input) {
+        if (!"CANCELLED".equals(entity.getStatus())) {
+            return toOutput(entity);
+        }
+        applyEditableFields(entity, input.reimburserName(), input.submittedDate(),
+                input.expectedDate(), input.note());
+        entity.setStatus("PENDING");
+        entity.setVersion(entity.getVersion() + 1);
+        entity.setModifier(String.valueOf(userId));
+        reimbursementMapper.updateById(entity);
+        return toOutput(entity);
+    }
+
+    private ReimbursementEntity buildEntity(Long userId, ReimbursementCreateInDTO input,
+                                             Long bookId, Long expenseTransactionId, BigDecimal expectedAmount) {
+        ReimbursementEntity entity = new ReimbursementEntity();
+        entity.setReimbursementNo(BusinessIdGenerator.next("RMB_"));
+        entity.setBookId(bookId);
+        entity.setExpenseTransactionId(expenseTransactionId);
+        entity.setExpectedAmount(expectedAmount);
+        applyEditableFields(entity, input.reimburserName(), input.submittedDate(),
+                input.expectedDate(), input.note());
+        entity.setStatus("PENDING");
+        entity.setVersion(0);
+        entity.setCreator(String.valueOf(userId));
+        entity.setModifier(String.valueOf(userId));
+        return entity;
+    }
+
+    private void applyExpectedAmount(ReimbursementEntity entity, BigDecimal expectedAmount) {
+        if (entity.getExpenseTransactionId() != null) {
+            if (expectedAmount != null && expectedAmount.compareTo(entity.getExpectedAmount()) != 0) {
+                throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "关联账单的报销金额不能修改");
+            }
+            return;
+        }
+        validateManualInput(entity.getBookId(), expectedAmount);
+        entity.setExpectedAmount(expectedAmount);
+    }
+
+    private void validateManualInput(Long bookId, BigDecimal expectedAmount) {
+        if (bookId == null || expectedAmount == null || expectedAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "手动报销必须填写账本和大于0的金额");
+        }
+    }
+
+    private void applyEditableFields(ReimbursementEntity entity, String reimburserName,
+                                     LocalDate submittedDate, LocalDate expectedDate,
+                                     String note) {
+        entity.setReimburserName(trim(reimburserName));
+        entity.setSubmittedDate(submittedDate);
+        entity.setExpectedDate(expectedDate);
+        entity.setNote(trim(note));
     }
 
     private ReimbursementOutDTO toOutput(ReimbursementEntity entity) {

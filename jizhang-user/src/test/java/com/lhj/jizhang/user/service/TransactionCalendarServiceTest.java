@@ -53,7 +53,7 @@ class TransactionCalendarServiceTest {
     @Test
     void shouldAggregateByBookTimezoneAndExposeUtcDayBoundaries() {
         when(bookMapper.selectById(1L)).thenReturn(book());
-        when(transactionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
+        when(transactionMapper.selectStatisticsTransactions(any(), any(), any())).thenReturn(List.of(
                 transaction("INCOME", "20.00", LocalDateTime.of(2026, 7, 1, 15, 59)),
                 transaction("EXPENSE", "7.50", LocalDateTime.of(2026, 7, 1, 16, 0))));
         RecurringRuleEntity rule = new RecurringRuleEntity();

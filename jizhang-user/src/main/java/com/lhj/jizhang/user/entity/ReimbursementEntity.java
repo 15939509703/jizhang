@@ -18,6 +18,7 @@ public class ReimbursementEntity {
     private Long bookId;
     private Long expenseTransactionId;
     private Long reimbursementTransactionId;
+    private String reimbursementType;
     private BigDecimal expectedAmount;
     private String reimburserName;
     private LocalDate submittedDate;

@@ -51,14 +51,8 @@ public class TransactionCalendarService {
         YearMonth target = month == null ? YearMonth.now(zone) : month;
         LocalDateTime startAt = toUtc(target.atDay(1).atStartOfDay(zone));
         LocalDateTime endAt = toUtc(target.plusMonths(1).atDay(1).atStartOfDay(zone));
-        List<TransactionEntity> transactions = transactionMapper.selectList(
-                Wrappers.<TransactionEntity>lambdaQuery()
-                        .eq(TransactionEntity::getBookId, bookId)
-                        .eq(TransactionEntity::getStatus, "EFFECTIVE")
-                        .in(TransactionEntity::getTransactionType, List.of("EXPENSE", "INCOME"))
-                        .ge(TransactionEntity::getHappenedAt, startAt)
-                        .lt(TransactionEntity::getHappenedAt, endAt)
-                        .orderByAsc(TransactionEntity::getHappenedAt, TransactionEntity::getId));
+        List<TransactionEntity> transactions = transactionMapper
+                .selectStatisticsTransactions(bookId, startAt, endAt);
         Map<LocalDate, DayAmounts> days = aggregate(transactions, zone);
         mergePending(days, bookId, target);
         return output(book, target, days);

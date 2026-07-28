@@ -27,6 +27,9 @@ import java.util.Set;
 
 @Service
 public class ReimbursementService {
+    private static final String ADVANCE_TYPE = "ADVANCE";
+    private static final String INCOME_TYPE = "INCOME";
+    private static final Set<String> REIMBURSEMENT_TYPES = Set.of(ADVANCE_TYPE, INCOME_TYPE);
     private static final Set<String> STATUSES = Set.of("PENDING", "REIMBURSED", "CANCELLED");
     private final ReimbursementMapper reimbursementMapper;
     private final TransactionMapper transactionMapper;
@@ -65,6 +68,7 @@ public class ReimbursementService {
     }
 
     private ReimbursementOutDTO createFromExpense(Long userId, ReimbursementCreateInDTO input) {
+        validateLinkedType(input.reimbursementType());
         TransactionEntity expense = transactionMapper.selectById(input.expenseTransactionId());
         if (expense == null || !"EXPENSE".equals(expense.getTransactionType())
                 || !"EFFECTIVE".equals(expense.getStatus())) {
@@ -114,6 +118,7 @@ public class ReimbursementService {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "报销项目已发生变化，请刷新后重试");
         }
         applyExpectedAmount(entity, input.expectedAmount());
+        applyReimbursementType(entity, input.reimbursementType());
         applyEditableFields(entity, input.reimburserName(), input.submittedDate(),
                 input.expectedDate(), input.note());
         entity.setVersion(entity.getVersion() + 1);
@@ -195,6 +200,7 @@ public class ReimbursementService {
         entity.setReimbursementNo(BusinessIdGenerator.next("RMB_"));
         entity.setBookId(bookId);
         entity.setExpenseTransactionId(expenseTransactionId);
+        entity.setReimbursementType(resolveCreateType(input.reimbursementType(), expenseTransactionId));
         entity.setExpectedAmount(expectedAmount);
         applyEditableFields(entity, input.reimburserName(), input.submittedDate(),
                 input.expectedDate(), input.note());
@@ -222,6 +228,40 @@ public class ReimbursementService {
         }
     }
 
+    private String resolveCreateType(String reimbursementType, Long expenseTransactionId) {
+        if (expenseTransactionId != null) {
+            return ADVANCE_TYPE;
+        }
+        return reimbursementType == null ? ADVANCE_TYPE : validateType(reimbursementType);
+    }
+
+    private void applyReimbursementType(ReimbursementEntity entity, String reimbursementType) {
+        if (reimbursementType == null) {
+            return;
+        }
+        if (entity.getExpenseTransactionId() != null && !ADVANCE_TYPE.equals(reimbursementType)) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "关联支出只能使用垫付报销类型");
+        }
+        entity.setReimbursementType(validateType(reimbursementType));
+    }
+
+    private void validateLinkedType(String reimbursementType) {
+        if (reimbursementType != null && !ADVANCE_TYPE.equals(reimbursementType)) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "关联支出只能使用垫付报销类型");
+        }
+    }
+
+    private String validateType(String reimbursementType) {
+        if (!REIMBURSEMENT_TYPES.contains(reimbursementType)) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "报销类型不正确");
+        }
+        return reimbursementType;
+    }
+
+    private String storedType(ReimbursementEntity entity) {
+        return entity.getReimbursementType() == null ? ADVANCE_TYPE : entity.getReimbursementType();
+    }
+
     private void applyEditableFields(ReimbursementEntity entity, String reimburserName,
                                      LocalDate submittedDate, LocalDate expectedDate,
                                      String note) {
@@ -233,8 +273,8 @@ public class ReimbursementService {
 
     private ReimbursementOutDTO toOutput(ReimbursementEntity entity) {
         return new ReimbursementOutDTO(entity.getId(), entity.getReimbursementNo(), entity.getBookId(),
-                entity.getExpenseTransactionId(), entity.getReimbursementTransactionId(), entity.getExpectedAmount(),
-                entity.getReimburserName(), entity.getSubmittedDate(), entity.getExpectedDate(),
+                entity.getExpenseTransactionId(), entity.getReimbursementTransactionId(), storedType(entity),
+                entity.getExpectedAmount(), entity.getReimburserName(), entity.getSubmittedDate(), entity.getExpectedDate(),
                 entity.getReimbursedTime() == null ? null : entity.getReimbursedTime().toInstant(ZoneOffset.UTC),
                 entity.getStatus(), entity.getNote(), entity.getVersion());
     }

@@ -25,11 +25,32 @@ public interface TransactionMapper extends BaseMapper<TransactionEntity> {
               AND t.happened_at < #{endAt}
               AND NOT EXISTS (
                 SELECT 1 FROM fin_reimbursement r
-                WHERE (r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
-                   OR (r.reimbursement_transaction_id = t.id AND r.status = 'REIMBURSED')
+                WHERE r.reimbursement_type = 'ADVANCE'
+                  AND ((r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+                   OR (r.reimbursement_transaction_id = t.id AND r.status = 'REIMBURSED'))
               )
             """)
     TransactionSummaryAggregate selectSummary(
+            @Param("bookId") Long bookId,
+            @Param("startAt") LocalDateTime startAt,
+            @Param("endAt") LocalDateTime endAt
+    );
+
+    @Select("""
+            SELECT t.*
+            FROM fin_transaction t
+            WHERE t.book_id = #{bookId}
+              AND t.status = 'EFFECTIVE'
+              AND t.transaction_type IN ('INCOME', 'EXPENSE')
+              AND t.happened_at >= #{startAt}
+              AND t.happened_at < #{endAt}
+              AND NOT EXISTS (SELECT 1 FROM fin_reimbursement r
+                WHERE r.reimbursement_type = 'ADVANCE'
+                  AND ((r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+                   OR (r.reimbursement_transaction_id = t.id AND r.status = 'REIMBURSED')))
+            ORDER BY t.happened_at, t.id
+            """)
+    List<TransactionEntity> selectStatisticsTransactions(
             @Param("bookId") Long bookId,
             @Param("startAt") LocalDateTime startAt,
             @Param("endAt") LocalDateTime endAt
@@ -46,7 +67,8 @@ public interface TransactionMapper extends BaseMapper<TransactionEntity> {
               AND t.happened_at >= #{startAt}
               AND t.happened_at < #{endAt}
               AND NOT EXISTS (SELECT 1 FROM fin_reimbursement r
-                WHERE r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+                WHERE r.expense_transaction_id = t.id AND r.reimbursement_type = 'ADVANCE'
+                  AND r.status IN ('PENDING', 'REIMBURSED'))
             GROUP BY t.category_id
             """)
     List<CategoryExpenseAggregate> selectExpenseByCategory(

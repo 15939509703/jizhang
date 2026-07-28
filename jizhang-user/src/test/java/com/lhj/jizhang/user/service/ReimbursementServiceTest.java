@@ -76,9 +76,23 @@ class ReimbursementServiceTest {
 
         assertNull(result.expenseTransactionId());
         assertEquals(new BigDecimal("120.50"), result.expectedAmount());
+        assertEquals("ADVANCE", result.reimbursementType());
         assertEquals("PENDING", result.status());
         verify(bookAccessService).requireWritable(7L, 1L);
         verify(transactionMapper, never()).selectById(any());
+        verify(reimbursementMapper).insert(any(ReimbursementEntity.class));
+    }
+
+    @Test
+    void shouldCreateIncomeReimbursementWithoutChangingLegacyDefault() {
+        ReimbursementCreateInDTO input = new ReimbursementCreateInDTO(null, "财务部",
+                LocalDate.parse("2026-07-27"), null, "加班费", 1L,
+                new BigDecimal("300.00"), "INCOME");
+
+        ReimbursementOutDTO result = service.create(7L, input);
+
+        assertEquals("INCOME", result.reimbursementType());
+        assertNull(result.expenseTransactionId());
         verify(reimbursementMapper).insert(any(ReimbursementEntity.class));
     }
 
@@ -107,6 +121,30 @@ class ReimbursementServiceTest {
         assertThrows(BusinessException.class, () -> service.update(7L, 10L, input));
 
         verify(reimbursementMapper, never()).updateById(entity);
+    }
+
+    @Test
+    void shouldRejectIncomeTypeForLinkedExpense() {
+        ReimbursementCreateInDTO input = new ReimbursementCreateInDTO(20L, "客户单位",
+                LocalDate.parse("2026-07-27"), null, null, null, null, "INCOME");
+
+        assertThrows(BusinessException.class, () -> service.create(7L, input));
+
+        verify(transactionMapper, never()).selectById(any());
+    }
+
+    @Test
+    void shouldUpdateManualReimbursementType() {
+        ReimbursementEntity entity = reimbursement("PENDING");
+        entity.setExpenseTransactionId(null);
+        when(reimbursementMapper.selectByIdForUpdate(10L)).thenReturn(entity);
+        ReimbursementUpdateInDTO input = new ReimbursementUpdateInDTO("财务部",
+                LocalDate.parse("2026-07-27"), null, null, new BigDecimal("88.00"), 2, "INCOME");
+
+        ReimbursementOutDTO result = service.update(7L, 10L, input);
+
+        assertEquals("INCOME", result.reimbursementType());
+        verify(reimbursementMapper).updateById(entity);
     }
 
     @Test
@@ -165,6 +203,7 @@ class ReimbursementServiceTest {
         entity.setReimbursementNo("RMB_10");
         entity.setBookId(1L);
         entity.setExpenseTransactionId(20L);
+        entity.setReimbursementType("ADVANCE");
         entity.setExpectedAmount(new BigDecimal("88.00"));
         entity.setStatus(status);
         entity.setVersion(2);

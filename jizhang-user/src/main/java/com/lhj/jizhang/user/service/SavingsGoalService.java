@@ -8,6 +8,7 @@ import com.lhj.jizhang.user.dto.SavingsContributionInDTO;
 import com.lhj.jizhang.user.dto.SavingsContributionOutDTO;
 import com.lhj.jizhang.user.dto.SavingsGoalCreateInDTO;
 import com.lhj.jizhang.user.dto.SavingsGoalOutDTO;
+import com.lhj.jizhang.user.dto.SavingsGoalUpdateInDTO;
 import com.lhj.jizhang.user.dto.TransactionCreateInDTO;
 import com.lhj.jizhang.user.dto.TransactionOutDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
@@ -84,6 +85,29 @@ public class SavingsGoalService {
         goal.setModifier(String.valueOf(userId));
         goalMapper.insert(goal);
         return toOutput(goal, true);
+    }
+
+    @Transactional
+    public SavingsGoalOutDTO update(Long userId, Long id, SavingsGoalUpdateInDTO input) {
+        SavingsGoalEntity goal = requireLockedGoal(id);
+        bookAccessService.requireWritable(userId, goal.getBookId());
+        validateVersion(goal, input.version());
+        validateDates(input.startDate(), input.targetDate());
+        validateAccount(goal.getBookId(), input.targetAccountId());
+        applyUpdate(goal, input, userId);
+        goalMapper.updateById(goal);
+        return toOutput(goal, true);
+    }
+
+    @Transactional
+    public void delete(Long userId, Long id) {
+        SavingsGoalEntity goal = requireLockedGoal(id);
+        bookAccessService.requireWritable(userId, goal.getBookId());
+        goal.setDeletedFlag(1);
+        goal.setStatus("CLOSED");
+        goal.setVersion(goal.getVersion() + 1);
+        goal.setModifier(String.valueOf(userId));
+        goalMapper.updateById(goal);
     }
 
     @Transactional
@@ -166,6 +190,20 @@ public class SavingsGoalService {
         goalMapper.updateById(goal);
     }
 
+    private void applyUpdate(SavingsGoalEntity goal, SavingsGoalUpdateInDTO input, Long userId) {
+        goal.setName(input.name().trim());
+        goal.setDescription(trim(input.description()));
+        goal.setTargetAmount(input.targetAmount());
+        goal.setTargetAccountId(input.targetAccountId());
+        goal.setStartDate(input.startDate());
+        goal.setTargetDate(input.targetDate());
+        if ("ACTIVE".equals(goal.getStatus()) || "COMPLETED".equals(goal.getStatus())) {
+            goal.setStatus(completed(goal).compareTo(goal.getTargetAmount()) >= 0 ? "COMPLETED" : "ACTIVE");
+        }
+        goal.setVersion(goal.getVersion() + 1);
+        goal.setModifier(String.valueOf(userId));
+    }
+
     private SavingsGoalOutDTO toOutput(SavingsGoalEntity goal, boolean includeContributions) {
         BigDecimal completed = completed(goal);
         BigDecimal remaining = goal.getTargetAmount().subtract(completed).max(BigDecimal.ZERO);
@@ -203,6 +241,20 @@ public class SavingsGoalService {
         SavingsGoalEntity goal = goalMapper.selectById(id);
         if (goal == null || goal.getDeletedFlag() == 1) throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "储蓄目标不存在");
         return goal;
+    }
+
+    private SavingsGoalEntity requireLockedGoal(Long id) {
+        SavingsGoalEntity goal = goalMapper.selectByIdForUpdate(id);
+        if (goal == null || goal.getDeletedFlag() == 1) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "储蓄目标不存在");
+        }
+        return goal;
+    }
+
+    private void validateVersion(SavingsGoalEntity goal, Integer version) {
+        if (!version.equals(goal.getVersion())) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "储蓄目标已发生变化，请刷新后重试");
+        }
     }
 
     private void validateAccount(Long bookId, Long accountId) {

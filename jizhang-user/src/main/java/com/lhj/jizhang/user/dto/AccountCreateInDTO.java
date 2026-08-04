@@ -26,7 +26,7 @@ public record AccountCreateInDTO(
         @NotBlank(message = "账户性质不能为空")
         @Pattern(regexp = "ASSET|LIABILITY", message = "账户性质不正确")
         String accountNature,
-        @Schema(description = "初始余额", example = "1000.00")
+        @Schema(description = "初始余额；负债账户填写信用额度", example = "1000.00")
         @NotNull(message = "初始余额不能为空")
         @Digits(integer = 17, fraction = 2, message = "初始余额最多保留2位小数")
         BigDecimal initialBalance,

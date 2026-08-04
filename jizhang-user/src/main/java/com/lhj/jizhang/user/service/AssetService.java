@@ -47,13 +47,16 @@ public class AssetService {
         List<AccountEntity> accounts = currentAccounts(bookId);
         BigDecimal totalAssets = accounts.stream().filter(account -> "ASSET".equals(account.getAccountNature()))
                 .map(AccountEntity::getCurrentBalance).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal liabilities = accounts.stream().filter(account -> "LIABILITY".equals(account.getAccountNature()))
-                .map(AccountEntity::getCurrentBalance).filter(balance -> balance.signum() < 0)
-                .reduce(BigDecimal.ZERO, BigDecimal::add).abs();
-        BigDecimal netAssets = accounts.stream().map(AccountEntity::getCurrentBalance)
+        List<AccountEntity> liabilityAccounts = accounts.stream()
+                .filter(account -> "LIABILITY".equals(account.getAccountNature())).toList();
+        BigDecimal totalCreditLimit = liabilityAccounts.stream().map(this::creditLimit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new AssetSummaryOutDTO(bookId, book.getCurrencyCode(), totalAssets, liabilities, netAssets,
-                mapAccounts(accounts, "ASSET"), mapAccounts(accounts, "LIABILITY"));
+        BigDecimal liabilities = liabilityAccounts.stream()
+                .map(account -> liabilityAmount(account, account.getCurrentBalance()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal netAssets = totalAssets.subtract(liabilities);
+        return new AssetSummaryOutDTO(bookId, book.getCurrencyCode(), totalAssets, totalCreditLimit, liabilities,
+                netAssets, mapAccounts(accounts, "ASSET"), mapAccounts(accounts, "LIABILITY"));
     }
 
     public AssetTrendOutDTO trend(Long userId, Long bookId, Integer months) {
@@ -69,7 +72,7 @@ public class AssetService {
         List<AccountEntity> accounts = allIncludedAccounts(bookId);
         Map<Long, List<AccountEntryEntity>> entries = loadEntries(accounts, monthEnd(targetMonths.getFirst(), zone));
         List<AssetTrendPointOutDTO> points = targetMonths.stream()
-                .map(month -> new AssetTrendPointOutDTO(month.toString(), balanceAt(accounts, entries,
+                .map(month -> new AssetTrendPointOutDTO(month.toString(), netAssetsAt(accounts, entries,
                         month.equals(current) ? Instant.now() : monthEnd(month, zone))))
                 .toList();
         return new AssetTrendOutDTO(bookId, book.getCurrencyCode(), points);
@@ -110,9 +113,10 @@ public class AssetService {
                 .collect(Collectors.groupingBy(AccountEntryEntity::getAccountId));
     }
 
-    private BigDecimal balanceAt(List<AccountEntity> accounts,
-                                 Map<Long, List<AccountEntryEntity>> entries, Instant cutoff) {
-        BigDecimal result = BigDecimal.ZERO;
+    private BigDecimal netAssetsAt(List<AccountEntity> accounts,
+                                   Map<Long, List<AccountEntryEntity>> entries, Instant cutoff) {
+        BigDecimal totalAssets = BigDecimal.ZERO;
+        BigDecimal liabilities = BigDecimal.ZERO;
         for (AccountEntity account : accounts) {
             if (!existedAt(account, cutoff)) {
                 continue;
@@ -120,9 +124,22 @@ public class AssetService {
             BigDecimal afterCutoff = entries.getOrDefault(account.getId(), List.of()).stream()
                     .filter(entry -> entry.getHappenedAt().toInstant(ZoneOffset.UTC).isAfter(cutoff))
                     .map(AccountEntryEntity::getSignedAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-            result = result.add(account.getCurrentBalance().subtract(afterCutoff));
+            BigDecimal balance = account.getCurrentBalance().subtract(afterCutoff);
+            if ("LIABILITY".equals(account.getAccountNature())) {
+                liabilities = liabilities.add(liabilityAmount(account, balance));
+            } else {
+                totalAssets = totalAssets.add(balance);
+            }
         }
-        return result;
+        return totalAssets.subtract(liabilities);
+    }
+
+    private BigDecimal liabilityAmount(AccountEntity account, BigDecimal availableBalance) {
+        return creditLimit(account).subtract(availableBalance).max(BigDecimal.ZERO);
+    }
+
+    private BigDecimal creditLimit(AccountEntity account) {
+        return account.getInitialBalance() == null ? BigDecimal.ZERO : account.getInitialBalance();
     }
 
     private boolean existedAt(AccountEntity account, Instant cutoff) {
@@ -140,8 +157,11 @@ public class AssetService {
     private List<AssetAccountOutDTO> mapAccounts(List<AccountEntity> accounts, String nature) {
         return accounts.stream().filter(account -> nature.equals(account.getAccountNature()))
                 .map(account -> new AssetAccountOutDTO(account.getId(), account.getName(), account.getAccountType(),
-                        account.getAccountNature(), account.getCurrentBalance(), account.getModifiedTime() == null
-                        ? null : account.getModifiedTime().toInstant(ZoneOffset.UTC))).toList();
+                        account.getAccountNature(), account.getInitialBalance(), account.getCurrentBalance(),
+                        "LIABILITY".equals(nature) ? liabilityAmount(account, account.getCurrentBalance())
+                                : BigDecimal.ZERO,
+                        account.getModifiedTime() == null ? null
+                                : account.getModifiedTime().toInstant(ZoneOffset.UTC))).toList();
     }
 
     private BookEntity requireBook(Long bookId) {

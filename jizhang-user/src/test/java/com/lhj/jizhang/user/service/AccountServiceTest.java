@@ -1,6 +1,7 @@
 package com.lhj.jizhang.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.user.dto.AccountCreateInDTO;
 import com.lhj.jizhang.user.dto.AccountUpdateInDTO;
 import com.lhj.jizhang.user.dto.AccountOutDTO;
@@ -15,6 +16,7 @@ import org.mockito.ArgumentCaptor;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -40,6 +42,17 @@ class AccountServiceTest {
 
         assertEquals(50, result.sortNo());
         verify(bookAccessService).requireWritable(7L, 1L);
+    }
+
+    @Test
+    void shouldRejectNegativeCreditLimit() {
+        AccountMapper accountMapper = mock(AccountMapper.class);
+        BookAccessService bookAccessService = mock(BookAccessService.class);
+        AccountService service = service(accountMapper, bookAccessService);
+
+        assertThrows(BusinessException.class, () -> service.create(7L,
+                new AccountCreateInDTO(1L, "信用卡", "CREDIT", "LIABILITY",
+                        new BigDecimal("-1.00"), true)));
     }
 
     @Test

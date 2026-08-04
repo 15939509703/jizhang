@@ -20,9 +20,9 @@ public record AccountOutDTO(
         String accountType,
         @Schema(description = "账户性质", example = "ASSET", allowableValues = {"ASSET", "LIABILITY"})
         String accountNature,
-        @Schema(description = "初始余额", example = "1000.00")
+        @Schema(description = "初始余额；负债账户表示信用额度", example = "1000.00")
         BigDecimal initialBalance,
-        @Schema(description = "当前余额", example = "971.50")
+        @Schema(description = "当前余额；负债账户表示当前可用额度", example = "971.50")
         BigDecimal currentBalance,
         @Schema(description = "是否计入总资产", example = "true")
         boolean includedInAssets,

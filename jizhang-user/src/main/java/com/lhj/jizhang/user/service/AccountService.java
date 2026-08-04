@@ -68,6 +68,7 @@ public class AccountService {
     @Transactional
     public AccountOutDTO create(Long userId, AccountCreateInDTO input) {
         bookAccessService.requireWritable(userId, input.bookId());
+        validateInitialBalance(input);
         AccountEntity account = new AccountEntity();
         account.setAccountNo(BusinessIdGenerator.next("ACC_"));
         account.setBookId(input.bookId());
@@ -85,6 +86,12 @@ public class AccountService {
         account.setModifier(String.valueOf(userId));
         accountMapper.insert(account);
         return toOutput(account);
+    }
+
+    private void validateInitialBalance(AccountCreateInDTO input) {
+        if ("LIABILITY".equals(input.accountNature()) && input.initialBalance().signum() < 0) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "信用额度不能小于0");
+        }
     }
 
     @Transactional

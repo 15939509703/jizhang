@@ -48,25 +48,40 @@ class AssetServiceTest {
     @Test
     void shouldSeparateAssetsLiabilitiesAndNetAssets() {
         when(accountMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
-                account(1L, "ASSET", "1000.00"),
-                account(2L, "ASSET", "-100.00"),
-                account(3L, "LIABILITY", "-300.00"),
-                account(4L, "LIABILITY", "50.00")));
+                account(1L, "ASSET", "1000.00", "1000.00"),
+                account(2L, "ASSET", "0.00", "-100.00"),
+                account(3L, "LIABILITY", "1000.00", "700.00"),
+                account(4L, "LIABILITY", "500.00", "550.00")));
 
         AssetSummaryOutDTO result = service.summary(7L, 1L);
 
         verify(bookAccessService).requireMember(7L, 1L);
         assertEquals(new BigDecimal("900.00"), result.totalAssets());
+        assertEquals(new BigDecimal("1500.00"), result.totalCreditLimit());
         assertEquals(new BigDecimal("300.00"), result.totalLiabilities());
-        assertEquals(new BigDecimal("650.00"), result.netAssets());
+        assertEquals(new BigDecimal("600.00"), result.netAssets());
         assertEquals(2, result.assetAccounts().size());
         assertEquals(2, result.liabilityAccounts().size());
+        assertEquals(new BigDecimal("300.00"), result.liabilityAccounts().getFirst().outstandingBalance());
+        assertEquals(BigDecimal.ZERO, result.liabilityAccounts().getLast().outstandingBalance());
+    }
+
+    @Test
+    void shouldSupportLegacyNegativeLiabilityBalance() {
+        when(accountMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
+                account(1L, "LIABILITY", "0.00", "-300.00")));
+
+        AssetSummaryOutDTO result = service.summary(7L, 1L);
+
+        assertEquals(new BigDecimal("0.00"), result.totalCreditLimit());
+        assertEquals(new BigDecimal("300.00"), result.totalLiabilities());
+        assertEquals(new BigDecimal("-300.00"), result.netAssets());
     }
 
     @Test
     void shouldReverseEntriesAfterHistoricalMonthEnd() {
         YearMonth current = YearMonth.now(ZoneId.of("Asia/Shanghai"));
-        AccountEntity account = account(1L, "ASSET", "1000.00");
+        AccountEntity account = account(1L, "ASSET", "1000.00", "1000.00");
         account.setCreatedTime(current.minusMonths(2).atDay(1).atStartOfDay());
         AccountEntryEntity entry = new AccountEntryEntity();
         entry.setAccountId(1L);
@@ -82,6 +97,24 @@ class AssetServiceTest {
         assertEquals(new BigDecimal("1000.00"), result.points().getLast().netAssets());
     }
 
+    @Test
+    void shouldCalculateHistoricalLiabilityFromAvailableCredit() {
+        YearMonth current = YearMonth.now(ZoneId.of("Asia/Shanghai"));
+        AccountEntity asset = account(1L, "ASSET", "1000.00", "1000.00");
+        AccountEntity credit = account(2L, "LIABILITY", "1000.00", "700.00");
+        AccountEntryEntity expense = new AccountEntryEntity();
+        expense.setAccountId(2L);
+        expense.setSignedAmount(new BigDecimal("-100.00"));
+        expense.setHappenedAt(current.atDay(1).atStartOfDay());
+        when(accountMapper.selectList(any(Wrapper.class))).thenReturn(List.of(asset, credit));
+        when(accountEntryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(expense));
+
+        AssetTrendOutDTO result = service.trend(7L, 1L, 2);
+
+        assertEquals(new BigDecimal("800.00"), result.points().getFirst().netAssets());
+        assertEquals(new BigDecimal("700.00"), result.points().getLast().netAssets());
+    }
+
     private BookEntity book() {
         BookEntity book = new BookEntity();
         book.setId(1L);
@@ -91,13 +124,14 @@ class AssetServiceTest {
         return book;
     }
 
-    private AccountEntity account(Long id, String nature, String balance) {
+    private AccountEntity account(Long id, String nature, String initialBalance, String currentBalance) {
         AccountEntity account = new AccountEntity();
         account.setId(id);
         account.setName("账户" + id);
         account.setAccountType("BANK");
         account.setAccountNature(nature);
-        account.setCurrentBalance(new BigDecimal(balance));
+        account.setInitialBalance(new BigDecimal(initialBalance));
+        account.setCurrentBalance(new BigDecimal(currentBalance));
         account.setCreatedTime(LocalDateTime.of(2020, 1, 1, 0, 0));
         return account;
     }

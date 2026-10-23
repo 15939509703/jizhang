@@ -3,13 +3,16 @@ package com.lhj.jizhang.user.service;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
 import com.lhj.jizhang.user.dto.BudgetOutDTO;
+import com.lhj.jizhang.user.dto.ConsumptionCategoryComparisonOutDTO;
 import com.lhj.jizhang.user.dto.ConsumptionComparisonOutDTO;
 import com.lhj.jizhang.user.dto.ConsumptionReportOutDTO;
 import com.lhj.jizhang.user.entity.BookEntity;
 import com.lhj.jizhang.user.mapper.BookMapper;
 import com.lhj.jizhang.user.mapper.ConsumptionReportMapper;
+import com.lhj.jizhang.user.mapper.StatisticsMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
 import com.lhj.jizhang.user.model.ConsumptionInsightAggregate;
+import com.lhj.jizhang.user.model.StatisticsBreakdownAggregate;
 import com.lhj.jizhang.user.model.TransactionSummaryAggregate;
 import org.springframework.stereotype.Service;
 
@@ -20,20 +23,26 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class ConsumptionReportService {
     private final TransactionMapper transactionMapper;
     private final ConsumptionReportMapper reportMapper;
+    private final StatisticsMapper statisticsMapper;
     private final BookMapper bookMapper;
     private final BookAccessService accessService;
     private final BudgetService budgetService;
 
     public ConsumptionReportService(TransactionMapper transactionMapper, ConsumptionReportMapper reportMapper,
+                                    StatisticsMapper statisticsMapper,
                                     BookMapper bookMapper, BookAccessService accessService,
                                     BudgetService budgetService) {
         this.transactionMapper = transactionMapper;
         this.reportMapper = reportMapper;
+        this.statisticsMapper = statisticsMapper;
         this.bookMapper = bookMapper;
         this.accessService = accessService;
         this.budgetService = budgetService;
@@ -61,7 +70,50 @@ public class ConsumptionReportService {
                 days == 0 ? BigDecimal.ZERO : current.expense.divide(BigDecimal.valueOf(days), 2, RoundingMode.HALF_UP),
                 insights == null ? null : insights.getTopCategoryId(),
                 insights == null ? null : insights.getTopCategoryName(),
-                insights == null ? 0 : insights.getTopCategoryCount());
+                insights == null ? 0 : insights.getTopCategoryCount(), categoryComparisons(bookId, target, zone));
+    }
+
+    /**
+     * 汇总本月和上月出现过的全部支出分类，并按本月支出排序。
+     *
+     * @param bookId 账本ID
+     * @param month 所选自然月
+     * @param zone 账本时区
+     * @return 分类环比列表
+     */
+    private List<ConsumptionCategoryComparisonOutDTO> categoryComparisons(Long bookId, YearMonth month, ZoneId zone) {
+        Range currentRange = range(month, zone);
+        Range previousRange = range(month.minusMonths(1), zone);
+        List<StatisticsBreakdownAggregate> current = statisticsMapper.selectCategoryBreakdown(bookId, "EXPENSE", currentRange.start, currentRange.end);
+        List<StatisticsBreakdownAggregate> previous = statisticsMapper.selectCategoryBreakdown(bookId, "EXPENSE", previousRange.start, previousRange.end);
+        Map<Long, StatisticsBreakdownAggregate> previousById = new LinkedHashMap<>();
+        for (StatisticsBreakdownAggregate row : previous) {
+            previousById.put(row.getItemId(), row);
+        }
+        Map<Long, ConsumptionCategoryComparisonOutDTO> result = new LinkedHashMap<>();
+        for (StatisticsBreakdownAggregate row : current) {
+            result.put(row.getItemId(), categoryComparison(row, previousById.get(row.getItemId())));
+        }
+        for (StatisticsBreakdownAggregate row : previous) {
+            result.putIfAbsent(row.getItemId(), categoryComparison(null, row));
+        }
+        return List.copyOf(result.values());
+    }
+
+    /**
+     * 计算单个分类的支出环比，上月没有支出时百分比为空。
+     *
+     * @param current 本月分类汇总，可为空
+     * @param previous 上月分类汇总，可为空
+     * @return 分类支出及环比
+     */
+    private ConsumptionCategoryComparisonOutDTO categoryComparison(StatisticsBreakdownAggregate current,
+                                                                    StatisticsBreakdownAggregate previous) {
+        StatisticsBreakdownAggregate category = current == null ? previous : current;
+        BigDecimal currentAmount = value(current == null ? null : current.getExpenseAmount());
+        BigDecimal previousAmount = value(previous == null ? null : previous.getExpenseAmount());
+        return new ConsumptionCategoryComparisonOutDTO(category.getItemId(), category.getItemName(),
+                currentAmount, comparison(currentAmount, previousAmount));
     }
 
     private Summary summary(Long bookId, YearMonth month, ZoneId zone) {

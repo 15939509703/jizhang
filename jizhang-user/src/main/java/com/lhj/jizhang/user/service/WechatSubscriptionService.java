@@ -15,6 +15,8 @@ import com.lhj.jizhang.user.entity.WechatSubscriptionEntity;
 import com.lhj.jizhang.user.mapper.NotificationOutboxMapper;
 import com.lhj.jizhang.user.mapper.UserAuthMapper;
 import com.lhj.jizhang.user.mapper.WechatSubscriptionMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ import java.util.Map;
 
 @Service
 public class WechatSubscriptionService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(WechatSubscriptionService.class);
     private static final List<String> SCENES = List.of("RECURRING_PENDING", "BUDGET_ALERT");
     private final WechatSubscriptionMapper subscriptionMapper;
     private final NotificationOutboxMapper outboxMapper;
@@ -107,8 +110,14 @@ public class WechatSubscriptionService {
                 item.setStatus("SENT"); item.setFailureCode(null); outboxMapper.updateById(item);
                 subscription.setAuthorizedCount(Math.max(0, subscription.getAuthorizedCount() - 1));
                 subscriptionMapper.updateById(subscription);
+                LOGGER.info("订阅消息发送成功 outboxId={} scene={}", item.getId(), item.getScene());
             } else fail(item, "WX_" + result.errorCode(), result.errorCode() == -1 || result.errorCode() >= 50000);
-        } catch (Exception exception) { fail(item, "NETWORK_ERROR", true); }
+        } catch (Exception exception) {
+            LOGGER.warn("订阅消息发送异常 outboxId={} scene={} attempt={} exceptionType={} causeType={}",
+                    item.getId(), item.getScene(), item.getRetryCount() + 1, exception.getClass().getName(),
+                    exception.getCause() == null ? "none" : exception.getCause().getClass().getName());
+            fail(item, "NETWORK_ERROR", true);
+        }
     }
 
     private void fail(NotificationOutboxEntity item, String code, boolean retryable) {
@@ -117,6 +126,8 @@ public class WechatSubscriptionService {
             item.setStatus("RETRY"); item.setNextRetryTime(LocalDateTime.now(ZoneOffset.UTC).plusMinutes(retries * 5L));
         } else item.setStatus("FAILED");
         outboxMapper.updateById(item);
+        LOGGER.warn("订阅消息发送未成功 outboxId={} scene={} failureCode={} retryCount={} status={}",
+                item.getId(), item.getScene(), code, retries, item.getStatus());
     }
 
     private WechatSubscriptionEntity find(Long userId, String scene) {

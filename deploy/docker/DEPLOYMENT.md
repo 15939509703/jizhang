@@ -126,6 +126,8 @@ RECURRING_SCAN_INTERVAL_MS=300000
 
 周期扫描默认每 5 分钟执行一次。临时设置 `FEATURE_RECURRING_TRANSACTIONS=false` 可停止领取新的周期任务，已经成功生成的账单不会被删除或冲正。
 
+预算订阅提醒需在 `/etc/jizhang/jizhang-server.env` 设置 `WX_NOTIFICATION_ENABLED=true` 和小程序后台对应的 `WX_BUDGET_TEMPLATE_ID`；周期待确认提醒还需单独配置 `WX_RECURRING_TEMPLATE_ID`。修改后重建应用容器，用户在小程序中主动订阅后才能接收提醒。
+
 ## 5. 回滚
 
 如果新版本启动失败：

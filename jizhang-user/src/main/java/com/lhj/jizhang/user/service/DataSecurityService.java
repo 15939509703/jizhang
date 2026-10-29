@@ -52,6 +52,10 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class DataSecurityService {
@@ -180,9 +184,9 @@ public class DataSecurityService {
 
     public List<DuplicateFindingOutDTO> findings(Long userId, Long bookId) {
         accessService.requireMember(userId, bookId);
-        return findingMapper.selectList(Wrappers.<DuplicateFindingEntity>lambdaQuery()
-                .eq(DuplicateFindingEntity::getBookId, bookId).orderByDesc(DuplicateFindingEntity::getId).last("LIMIT 100"))
-                .stream().map(this::findingOutput).toList();
+        List<DuplicateFindingEntity> rows = findingMapper.selectList(Wrappers.<DuplicateFindingEntity>lambdaQuery()
+                .eq(DuplicateFindingEntity::getBookId, bookId).orderByDesc(DuplicateFindingEntity::getId).last("LIMIT 100"));
+        return findingOutputs(rows);
     }
 
     @Transactional
@@ -222,7 +226,7 @@ public class DataSecurityService {
             finding.setStatus("CONFIRMED");
         } else if ("PENDING".equals(finding.getStatus())) finding.setStatus("IGNORED");
         finding.setHandledUserId(userId); finding.setModifier(String.valueOf(userId)); findingMapper.updateById(finding);
-        return findingOutput(finding);
+        return findingOutputs(List.of(finding)).get(0);
     }
 
     private BackupPayload payload(Long bookId) {
@@ -305,7 +309,34 @@ public class DataSecurityService {
     private String sha256(byte[] bytes) throws Exception { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
     private BackupTaskOutDTO backupOutput(BackupTaskEntity item) { return new BackupTaskOutDTO(item.getId(), item.getTaskNo(), item.getBookId(), item.getTaskStatus(), item.getChecksum(), item.getFormatVersion(), item.getCreatedTime() == null ? null : item.getCreatedTime().toInstant(ZoneOffset.UTC), item.getExpiredTime() == null ? null : item.getExpiredTime().toInstant(ZoneOffset.UTC)); }
     private RestoreCheckOutDTO restoreOutput(RestoreCheckEntity item) { return new RestoreCheckOutDTO(item.getId(), item.getBackupId(), item.getAddedCount(), item.getSkippedCount(), item.getConflictCount(), item.getStatus()); }
-    private DuplicateFindingOutDTO findingOutput(DuplicateFindingEntity item) { return new DuplicateFindingOutDTO(item.getId(), item.getTransactionId(), item.getCandidateTransactionId(), item.getSimilarity(), item.getReason(), item.getStatus()); }
+    /** 批量读取候选账单和分类，避免每条重复记录单独查询。 */
+    private List<DuplicateFindingOutDTO> findingOutputs(List<DuplicateFindingEntity> findings) {
+        if (findings.isEmpty()) return List.of();
+        Set<Long> transactionIds = findings.stream()
+                .flatMap(item -> Stream.of(item.getTransactionId(), item.getCandidateTransactionId()))
+                .collect(Collectors.toSet());
+        Map<Long, TransactionEntity> transactions = transactionMapper.selectBatchIds(transactionIds).stream()
+                .collect(Collectors.toMap(TransactionEntity::getId, Function.identity()));
+        Set<Long> categoryIds = transactions.values().stream().map(TransactionEntity::getCategoryId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, CategoryEntity> categories = categoryIds.isEmpty() ? Map.of() : categoryMapper.selectBatchIds(categoryIds)
+                .stream().collect(Collectors.toMap(CategoryEntity::getId, Function.identity()));
+        return findings.stream().map(item -> new DuplicateFindingOutDTO(item.getId(), item.getTransactionId(),
+                item.getCandidateTransactionId(), item.getSimilarity(), item.getReason(), item.getStatus(),
+                transactionSummary(transactions.get(item.getTransactionId()), categories),
+                transactionSummary(transactions.get(item.getCandidateTransactionId()), categories))).toList();
+    }
+
+    /** 将账单转换为重复项核对摘要；已删除的账单不再提供详情。 */
+    private DuplicateFindingOutDTO.TransactionSummary transactionSummary(TransactionEntity transaction,
+                                                                           Map<Long, CategoryEntity> categories) {
+        if (transaction == null) return null;
+        CategoryEntity category = categories.get(transaction.getCategoryId());
+        return new DuplicateFindingOutDTO.TransactionSummary(transaction.getId(), transaction.getTitle(),
+                transaction.getTransactionType(), transaction.getAmount(), transaction.getCurrencyCode(),
+                transaction.getHappenedAt() == null ? null : transaction.getHappenedAt().toInstant(ZoneOffset.UTC),
+                category == null ? null : category.getName(), transaction.getNote(), transaction.getStatus());
+    }
 
     public record BackupFile(String fileName, byte[] bytes) { }
     private record BackupPayload(int formatVersion, BookEntity book, List<CategoryEntity> categories,

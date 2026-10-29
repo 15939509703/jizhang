@@ -14,6 +14,7 @@
 - `deploy/docker/docker-compose.app.yml`：后端容器编排，复用现有 MySQL/Redis
 - `deploy/docker/docker-compose.yml`：新环境全量编排，包含 MySQL、Redis、后端
 - `deploy/docker/.env.example`：生产环境变量样例
+- `deploy/docker/LOGGING_DESIGN.md`：日志管理系统接入设计方案（尚未实施）
 
 ## 2. 首次部署
 

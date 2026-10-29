@@ -63,7 +63,10 @@ public class FamilySharingService {
 
     @Transactional
     public BookInvitationOutDTO createInvitation(Long userId, Long bookId, BookInvitationCreateInDTO input) {
-        accessService.requirePermission(userId, bookId, BookPermission.MANAGE_MEMBERS);
+        BookMemberEntity actor = accessService.requirePermission(userId, bookId, BookPermission.MANAGE_MEMBERS);
+        if ("ADMIN".equals(input.role()) && !"OWNER".equals(actor.getRole())) {
+            throw new BusinessException(ErrorCodes.BOOK_ACCESS_DENIED, "仅账本所有者可邀请管理员", HttpStatus.FORBIDDEN);
+        }
         byte[] bytes = new byte[32];
         secureRandom.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -109,12 +112,20 @@ public class FamilySharingService {
             member.setCreator(String.valueOf(userId));
             member.setModifier(String.valueOf(userId));
             memberMapper.insert(member);
-        } else if (member.getStatus() == 0) {
+        } else {
+            if ("OWNER".equals(member.getRole())) {
+                throw new BusinessException(ErrorCodes.MEMBER_INVALID, "账本所有者无需接受邀请");
+            }
             member.setRole(invitation.getDefaultRole());
-            member.setStatus(1);
-            member.setJoinedTime(LocalDateTime.now(ZoneOffset.UTC));
+            member.setPermissions(null);
+            if (member.getStatus() == 0) {
+                member.setStatus(1);
+                member.setJoinedTime(LocalDateTime.now(ZoneOffset.UTC));
+            }
+            member.setInvitedBy(invitation.getInviterUserId());
             member.setModifier(String.valueOf(userId));
             memberMapper.updateById(member);
+            memberMapper.clearPermissions(member.getId());
         }
         invitation.setStatus("ACCEPTED");
         invitation.setAcceptedUserId(userId);

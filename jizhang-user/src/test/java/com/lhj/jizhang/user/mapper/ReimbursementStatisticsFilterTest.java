@@ -18,6 +18,7 @@ class ReimbursementStatisticsFilterTest {
 
     @Test
     void shouldOnlyExcludeAdvanceReimbursementsFromDashboardStatistics() {
+        assertAdvanceFilter(StatisticsMapper.class, "selectYearly");
         assertAdvanceFilter(StatisticsMapper.class, "selectDaily");
         assertAdvanceFilter(StatisticsMapper.class, "selectMonthly");
         assertAdvanceFilter(StatisticsMapper.class, "selectCategoryBreakdown");

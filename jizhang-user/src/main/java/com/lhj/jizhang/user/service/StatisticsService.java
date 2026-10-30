@@ -3,6 +3,7 @@ package com.lhj.jizhang.user.service;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
 import com.lhj.jizhang.user.dto.StatisticsBreakdownOutDTO;
+import com.lhj.jizhang.user.dto.BillOverviewOutDTO;
 import com.lhj.jizhang.user.dto.StatisticsDashboardOutDTO;
 import com.lhj.jizhang.user.dto.StatisticsSummaryOutDTO;
 import com.lhj.jizhang.user.dto.StatisticsTrendOutDTO;
@@ -84,6 +85,19 @@ public class StatisticsService {
                 monthlyExpenseCategories, monthlyIncomeCategories, annualExpenseCategories,
                 annualIncomeCategories, monthlyExpenseCategories, monthlyIncomeCategories, accounts,
                 annualTrend(bookId, zone, targetYear));
+    }
+
+    /** 按账本权限读取历年及指定自然年的月度收支。 */
+    public BillOverviewOutDTO billOverview(Long userId, Long bookId, Integer year) {
+        bookAccessService.requireMember(userId, bookId);
+        BookEntity book = requireBook(bookId);
+        ZoneId zone = ZoneId.of(book.getTimezone());
+        int targetYear = year == null ? LocalDate.now(zone).getYear() : validateYear(year);
+        List<StatisticsTrendOutDTO> years = statisticsMapper.selectYearly(bookId, book.getTimezone(),
+                        offset(zone, LocalDate.of(targetYear, 1, 1)))
+                .stream().map(item -> new StatisticsTrendOutDTO(item.getPeriodKey(), income(item), expense(item)))
+                .toList();
+        return new BillOverviewOutDTO(book.getCurrencyCode(), targetYear, years, annualTrend(bookId, zone, targetYear));
     }
 
     private StatisticsSummaryOutDTO summary(Long bookId, Range range) {

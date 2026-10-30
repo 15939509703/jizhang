@@ -9,6 +9,27 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface StatisticsMapper {
+    /** 按账本时区汇总全部有效收支账单的自然年，口径与统计看板一致。 */
+    @Select("""
+            SELECT DATE_FORMAT(COALESCE(CONVERT_TZ(t.happened_at, '+00:00', #{timezone}),
+                   CONVERT_TZ(t.happened_at, '+00:00', #{timezoneOffset})), '%Y') AS period_key,
+                   COALESCE(SUM(CASE WHEN t.transaction_type = 'INCOME' THEN t.amount ELSE 0 END), 0) AS income_amount,
+                   COALESCE(SUM(CASE WHEN t.transaction_type = 'EXPENSE' THEN t.amount ELSE 0 END), 0) AS expense_amount
+            FROM fin_transaction t
+            WHERE t.book_id = #{bookId} AND t.status = 'EFFECTIVE'
+              AND t.transaction_type IN ('INCOME', 'EXPENSE')
+              AND NOT EXISTS (SELECT 1 FROM fin_reimbursement r
+                WHERE r.reimbursement_type = 'ADVANCE'
+                  AND ((r.expense_transaction_id = t.id AND r.status IN ('PENDING', 'REIMBURSED'))
+                   OR (r.reimbursement_transaction_id = t.id AND r.status = 'REIMBURSED')))
+            GROUP BY period_key ORDER BY period_key DESC
+            """)
+    List<StatisticsPeriodAggregate> selectYearly(
+            @Param("bookId") Long bookId,
+            @Param("timezone") String timezone,
+            @Param("timezoneOffset") String timezoneOffset
+    );
+
     @Select("""
             SELECT DATE_FORMAT(CONVERT_TZ(happened_at, '+00:00', #{timezoneOffset}), '%Y-%m-%d') AS period_key,
                    COALESCE(SUM(CASE WHEN transaction_type = 'INCOME' THEN amount ELSE 0 END), 0) AS income_amount,

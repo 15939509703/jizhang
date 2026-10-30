@@ -2,6 +2,7 @@ package com.lhj.jizhang.user.controller;
 
 import com.lhj.jizhang.common.api.ApiResponse;
 import com.lhj.jizhang.security.model.AuthenticatedUser;
+import com.lhj.jizhang.user.dto.BillOverviewOutDTO;
 import com.lhj.jizhang.user.dto.StatisticsDashboardOutDTO;
 import com.lhj.jizhang.user.service.StatisticsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -39,5 +40,16 @@ public class StatisticsController {
             @RequestParam(required = false) Integer year
     ) {
         return ApiResponse.success(statisticsService.dashboard(user.userId(), bookId, month, year, weekStart));
+    }
+
+    /** 查询历年及所选年份的月度账单汇总。 */
+    @Operation(summary = "查询年月账单汇总")
+    @GetMapping("/bill-overview")
+    public ApiResponse<BillOverviewOutDTO> billOverview(
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam Long bookId,
+            @RequestParam(required = false) Integer year
+    ) {
+        return ApiResponse.success(statisticsService.billOverview(user.userId(), bookId, year));
     }
 }

@@ -37,6 +37,8 @@ import java.util.EnumSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class FamilySharingService {
@@ -181,11 +183,20 @@ public class FamilySharingService {
 
     public List<BookAuditLogOutDTO> auditLogs(Long userId, Long bookId) {
         accessService.requirePermission(userId, bookId, BookPermission.MANAGE_MEMBERS);
-        return auditMapper.selectList(Wrappers.<BookAuditLogEntity>lambdaQuery()
-                .eq(BookAuditLogEntity::getBookId, bookId).orderByDesc(BookAuditLogEntity::getId).last("LIMIT 100"))
-                .stream().map(item -> new BookAuditLogOutDTO(item.getId(), item.getOperatorUserId(), item.getAction(),
-                        item.getObjectType(), item.getObjectId(), item.getSummary(),
-                        item.getCreatedTime().toInstant(ZoneOffset.UTC))).toList();
+        List<BookAuditLogEntity> logs = auditMapper.selectList(Wrappers.<BookAuditLogEntity>lambdaQuery()
+                .eq(BookAuditLogEntity::getBookId, bookId).orderByDesc(BookAuditLogEntity::getId).last("LIMIT 100"));
+        if (logs.isEmpty()) return List.of();
+        Map<Long, UserEntity> users = userMapper.selectByIds(logs.stream()
+                        .map(BookAuditLogEntity::getOperatorUserId).distinct().toList()).stream()
+                .collect(Collectors.toMap(UserEntity::getId, Function.identity()));
+        return logs.stream().map(item -> {
+            UserEntity operator = users.get(item.getOperatorUserId());
+            return new BookAuditLogOutDTO(item.getId(), item.getOperatorUserId(), item.getAction(),
+                    item.getObjectType(), item.getObjectId(), item.getSummary(),
+                    item.getCreatedTime().toInstant(ZoneOffset.UTC),
+                    operator == null ? "未知用户" : operator.getNickName(),
+                    operator == null ? null : operator.getUserNo());
+        }).toList();
     }
 
     private BookInvitationOutDTO output(BookInvitationEntity invitation, String token) {

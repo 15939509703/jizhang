@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
 import com.lhj.jizhang.user.dto.BookInvitationCreateInDTO;
+import com.lhj.jizhang.user.entity.BookAuditLogEntity;
 import com.lhj.jizhang.user.entity.BookEntity;
 import com.lhj.jizhang.user.entity.BookInvitationEntity;
 import com.lhj.jizhang.user.entity.BookMemberEntity;
@@ -24,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -185,6 +187,30 @@ class FamilySharingServiceTest {
         assertThrows(BusinessException.class, () -> service.accept(2L, "expired-token"));
 
         verify(memberMapper, never()).insert(any(BookMemberEntity.class));
+    }
+
+    /** 操作记录显示操作者昵称和编码，用户资料缺失时不回退为内部 ID。 */
+    @Test
+    void auditLogsIncludeOperatorProfile() {
+        BookAuditLogEntity knownLog = new BookAuditLogEntity();
+        knownLog.setId(10L);
+        knownLog.setOperatorUserId(2L);
+        knownLog.setCreatedTime(LocalDateTime.now(ZoneOffset.UTC));
+        BookAuditLogEntity missingLog = new BookAuditLogEntity();
+        missingLog.setId(9L);
+        missingLog.setOperatorUserId(3L);
+        missingLog.setCreatedTime(LocalDateTime.now(ZoneOffset.UTC));
+        UserEntity operator = user();
+        operator.setId(2L);
+        when(auditMapper.selectList(any(Wrapper.class))).thenReturn(List.of(knownLog, missingLog));
+        when(userMapper.selectByIds(any())).thenReturn(List.of(operator));
+
+        var logs = service.auditLogs(1L, 9L);
+
+        assertEquals("朋友", logs.get(0).operatorNickName());
+        assertEquals("U002", logs.get(0).operatorUserNo());
+        assertEquals("未知用户", logs.get(1).operatorNickName());
+        assertNull(logs.get(1).operatorUserNo());
     }
 
     /** 构建尚未过期的一次性邀请。 */

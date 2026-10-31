@@ -68,7 +68,8 @@ public class BudgetService {
         BookEntity book = requireBook(bookId);
         YearMonth targetMonth = resolveMonth(book, month);
         BudgetEntity budget = findBudget(bookId, targetMonth);
-        return toOutput(book, targetMonth, budget);
+        BudgetEntity effectiveBudget = budget == null ? findPreviousBudget(bookId, targetMonth) : budget;
+        return toOutput(book, targetMonth, budget, effectiveBudget);
     }
 
     @Transactional
@@ -79,7 +80,7 @@ public class BudgetService {
         validateItems(input);
         BudgetEntity budget = upsertBudget(userId, input);
         replaceItems(userId, budget.getId(), input.items());
-        return toOutput(book, month, budget);
+        return toOutput(book, month, budget, budget);
     }
 
     private BudgetEntity upsertBudget(Long userId, BudgetSaveInDTO input) {
@@ -138,15 +139,16 @@ public class BudgetService {
         }
     }
 
-    private BudgetOutDTO toOutput(BookEntity book, YearMonth month, BudgetEntity budget) {
+    private BudgetOutDTO toOutput(BookEntity book, YearMonth month, BudgetEntity budget,
+                                  BudgetEntity effectiveBudget) {
         Map<Long, BudgetItemEntity> itemMap = loadItems(budget);
         Map<Long, BigDecimal> expenseMap = loadExpenseMap(book, month);
         List<BudgetItemOutDTO> items = expenseCategories(book.getId()).stream()
                 .map(category -> toItemOutput(category, itemMap.get(category.getId()), expenseMap.get(category.getId())))
                 .toList();
         BigDecimal usedAmount = expenseMap.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal totalLimit = budget == null ? BigDecimal.ZERO : valueOrZero(budget.getTotalLimit());
-        BigDecimal warningRate = budget == null ? DEFAULT_WARNING_RATE : budget.getWarningRate();
+        BigDecimal totalLimit = effectiveBudget == null ? BigDecimal.ZERO : valueOrZero(effectiveBudget.getTotalLimit());
+        BigDecimal warningRate = effectiveBudget == null ? DEFAULT_WARNING_RATE : effectiveBudget.getWarningRate();
         BudgetForecast forecast = forecast(book, month, totalLimit, usedAmount);
         return new BudgetOutDTO(
                 budget == null ? null : budget.getId(),
@@ -229,6 +231,22 @@ public class BudgetService {
                 .eq(BudgetEntity::getBookId, bookId)
                 .eq(BudgetEntity::getBudgetMonth, month.toString())
                 .eq(BudgetEntity::getStatus, 1));
+    }
+
+    /**
+     * 查找当前月份以前最近一次手动保存的预算，作为后续月份的默认总额与预警比例。
+     *
+     * @param bookId 账本ID
+     * @param month 当前预算月份
+     * @return 最近的历史预算，不存在时返回null
+     */
+    private BudgetEntity findPreviousBudget(Long bookId, YearMonth month) {
+        return budgetMapper.selectOne(Wrappers.<BudgetEntity>lambdaQuery()
+                .eq(BudgetEntity::getBookId, bookId)
+                .lt(BudgetEntity::getBudgetMonth, month.toString())
+                .eq(BudgetEntity::getStatus, 1)
+                .orderByDesc(BudgetEntity::getBudgetMonth)
+                .last("LIMIT 1"));
     }
 
     private BookEntity requireBook(Long bookId) {

@@ -27,9 +27,11 @@ import java.time.YearMonth;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -76,6 +78,49 @@ class BudgetServiceTest {
         assertEquals(new BigDecimal("45.00"), result.items().getFirst().usedAmount());
         assertEquals(90, result.items().getFirst().usagePercent());
         assertEquals("WARN", result.items().getFirst().usageStatus());
+    }
+
+    /** 验证无独立预算的月份沿用此前的总额与预警比例。 */
+    @Test
+    void shouldInheritBudgetAmountAndWarningRateInFollowingMonth() {
+        when(bookMapper.selectById(1L)).thenReturn(activeBook());
+        when(budgetMapper.selectOne(any(Wrapper.class))).thenReturn(null, activeBudget());
+        when(categoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of(foodCategory()));
+        when(transactionMapper.selectExpenseByCategory(any(), any(), any())).thenReturn(List.of(foodExpense()));
+
+        BudgetOutDTO result = service.getBudget(7L, 1L, YearMonth.of(2026, 8));
+
+        assertEquals("2026-08", result.month());
+        assertNull(result.id());
+        assertEquals(new BigDecimal("5000.00"), result.totalLimit());
+        assertEquals(new BigDecimal("0.8000"), result.warningRate());
+        assertEquals(new BigDecimal("45.00"), result.usedAmount());
+        assertEquals(BigDecimal.ZERO, result.items().getFirst().limitAmount());
+        verify(budgetMapper, times(2)).selectOne(any(Wrapper.class));
+    }
+
+    /** 验证手动修改覆盖当月，并成为后续月份的默认值。 */
+    @Test
+    void shouldUseManualMonthlyOverrideForThatMonthAndFollowingMonths() {
+        BudgetEntity override = activeBudget();
+        override.setBudgetMonth("2026-08");
+        override.setTotalLimit(new BigDecimal("3000.00"));
+        override.setWarningRate(new BigDecimal("0.7500"));
+        when(bookMapper.selectById(1L)).thenReturn(activeBook());
+        when(budgetMapper.selectOne(any(Wrapper.class))).thenReturn(override, null, override);
+        when(budgetItemMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(categoryMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(transactionMapper.selectExpenseByCategory(any(), any(), any())).thenReturn(List.of());
+
+        BudgetOutDTO august = service.getBudget(7L, 1L, YearMonth.of(2026, 8));
+        BudgetOutDTO september = service.getBudget(7L, 1L, YearMonth.of(2026, 9));
+
+        assertEquals(override.getId(), august.id());
+        assertEquals(new BigDecimal("3000.00"), august.totalLimit());
+        assertEquals(new BigDecimal("0.7500"), august.warningRate());
+        assertNull(september.id());
+        assertEquals(new BigDecimal("3000.00"), september.totalLimit());
+        assertEquals(new BigDecimal("0.7500"), september.warningRate());
     }
 
     @Test

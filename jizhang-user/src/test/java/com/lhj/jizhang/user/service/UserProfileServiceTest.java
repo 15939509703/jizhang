@@ -44,6 +44,18 @@ class UserProfileServiceTest {
     }
 
     @Test
+    void shouldReturnPrivateAvatarUrlAfterNicknameUpdate() {
+        UserMapper userMapper = mock(UserMapper.class);
+        UserEntity user = activeUser();
+        user.setAvatarUrl("avatars/7/00000000-0000-0000-0000-000000000001.png");
+        when(userMapper.selectById(7L)).thenReturn(user);
+
+        LoginUserOutDTO result = new UserProfileService(userMapper).update(7L, new UserProfileUpdateInDTO("新昵称"));
+
+        assertEquals("/api/v1/users/me/avatar?v=00000000-0000-0000-0000-000000000001.png", result.avatarUrl());
+    }
+
+    @Test
     void shouldRejectDisabledUser() {
         UserMapper userMapper = mock(UserMapper.class);
         UserEntity user = activeUser();

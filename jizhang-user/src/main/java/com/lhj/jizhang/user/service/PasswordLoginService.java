@@ -105,7 +105,7 @@ public class PasswordLoginService {
                 tokens.accessToken(),
                 tokens.refreshToken(),
                 tokens.expiresIn(),
-                new LoginUserOutDTO(user.getId(), user.getUserNo(), user.getNickName(), user.getAvatarUrl()),
+                new LoginUserOutDTO(user.getId(), user.getUserNo(), user.getNickName(), UserAvatarService.publicUrl(user)),
                 new LoginBookOutDTO(book.getId(), book.getBookNo(), book.getName())
         );
     }

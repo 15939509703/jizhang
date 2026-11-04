@@ -15,7 +15,7 @@ public record SavingsGoalCreateInDTO(
         @Size(max = 1000) String description,
         @NotNull @DecimalMin("0.01") @Digits(integer = 17, fraction = 2) BigDecimal targetAmount,
         @DecimalMin("0.00") @Digits(integer = 17, fraction = 2) BigDecimal initialAmount,
-        Long targetAccountId,
+        @NotNull Long targetAccountId,
         @NotNull LocalDate startDate,
         LocalDate targetDate
 ) { }

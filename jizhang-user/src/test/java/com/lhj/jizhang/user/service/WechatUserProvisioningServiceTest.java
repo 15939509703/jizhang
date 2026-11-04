@@ -94,6 +94,22 @@ class WechatUserProvisioningServiceTest {
         verify(bookService, never()).createDefault(any());
     }
 
+    /** 微信重新登录不能把用户上传的头像替换为微信头像。 */
+    @Test
+    void shouldPreserveUploadedAvatarOnWechatLogin() {
+        UserEntity user = activeUser(101L);
+        user.setAvatarUrl("avatars/101/00000000-0000-0000-0000-000000000001.png");
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(activeAuth(101L));
+        when(userMapper.selectById(101L)).thenReturn(user);
+        when(bookMemberMapper.selectOne(any(Wrapper.class))).thenReturn(activeMember(201L, 101L));
+        when(bookMapper.selectById(201L)).thenReturn(activeBook(201L));
+
+        service.findOrCreate(new WechatSession("openid-1001", null, "new-session-key"),
+                new WechatLoginInDTO("code", "微信昵称", "https://example.com/wechat.png"));
+
+        assertEquals("avatars/101/00000000-0000-0000-0000-000000000001.png", user.getAvatarUrl());
+    }
+
     private void doAssignUserId() {
         org.mockito.Mockito.doAnswer(invocation -> {
             invocation.<UserEntity>getArgument(0).setId(101L);

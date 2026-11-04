@@ -14,9 +14,11 @@ import com.lhj.jizhang.user.dto.TransactionOutDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
 import com.lhj.jizhang.user.entity.SavingsContributionEntity;
 import com.lhj.jizhang.user.entity.SavingsGoalEntity;
+import com.lhj.jizhang.user.entity.TransactionEntity;
 import com.lhj.jizhang.user.mapper.AccountMapper;
 import com.lhj.jizhang.user.mapper.SavingsContributionMapper;
 import com.lhj.jizhang.user.mapper.SavingsGoalMapper;
+import com.lhj.jizhang.user.mapper.TransactionMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,15 +36,20 @@ public class SavingsGoalService {
     private final SavingsContributionMapper contributionMapper;
     private final AccountMapper accountMapper;
     private final TransactionService transactionService;
+    private final TransactionMapper transactionMapper;
+    private final AccountService accountService;
     private final BookAccessService bookAccessService;
 
     public SavingsGoalService(SavingsGoalMapper goalMapper, SavingsContributionMapper contributionMapper,
                               AccountMapper accountMapper, TransactionService transactionService,
+                              TransactionMapper transactionMapper, AccountService accountService,
                               BookAccessService bookAccessService) {
         this.goalMapper = goalMapper;
         this.contributionMapper = contributionMapper;
         this.accountMapper = accountMapper;
         this.transactionService = transactionService;
+        this.transactionMapper = transactionMapper;
+        this.accountService = accountService;
         this.bookAccessService = bookAccessService;
     }
 
@@ -53,8 +60,8 @@ public class SavingsGoalService {
         }
         var query = Wrappers.<SavingsGoalEntity>lambdaQuery().eq(SavingsGoalEntity::getBookId, bookId)
                 .eq(SavingsGoalEntity::getDeletedFlag, 0).orderByDesc(SavingsGoalEntity::getId);
-        if (status != null) query.eq(SavingsGoalEntity::getStatus, status);
-        return goalMapper.selectList(query).stream().map(goal -> toOutput(goal, false)).toList();
+        return goalMapper.selectList(query).stream().map(goal -> toOutput(goal, false))
+                .filter(goal -> status == null || status.equals(goal.status())).toList();
     }
 
     public SavingsGoalOutDTO get(Long userId, Long id) {
@@ -78,7 +85,7 @@ public class SavingsGoalService {
         goal.setTargetAccountId(input.targetAccountId());
         goal.setStartDate(input.startDate());
         goal.setTargetDate(input.targetDate());
-        goal.setStatus(goal.getInitialAmount().compareTo(goal.getTargetAmount()) >= 0 ? "COMPLETED" : "ACTIVE");
+        goal.setStatus(completed(goal).compareTo(goal.getTargetAmount()) >= 0 ? "COMPLETED" : "ACTIVE");
         goal.setVersion(0);
         goal.setDeletedFlag(0);
         goal.setCreator(String.valueOf(userId));
@@ -119,18 +126,33 @@ public class SavingsGoalService {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "当前目标不能存入");
         }
         Long transactionId = null;
+        String requestId = "GOAL_" + id + "_" + input.requestId();
+        if (goal.getTargetAccountId() == null) {
+            throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "请先为目标关联账户");
+        }
         if ("TRANSFER".equals(input.contributionType())) {
-            if (goal.getTargetAccountId() == null || input.sourceAccountId() == null || input.happenedAt() == null) {
+            if (input.sourceAccountId() == null || input.happenedAt() == null) {
                 throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "转账存入需设置来源账户、目标账户和发生时间");
             }
             TransactionOutDTO transaction = transactionService.create(userId, new TransactionCreateInDTO(
-                    "GOAL_" + id + "_" + input.requestId(), goal.getBookId(), "TRANSFER", null, null,
+                    requestId, goal.getBookId(), "TRANSFER", null, null,
                     input.sourceAccountId(), goal.getTargetAccountId(), input.amount(), input.happenedAt(),
                     "存入目标：" + goal.getName(), input.note()));
             transactionId = transaction.id();
             SavingsContributionEntity existing = contributionMapper.selectOne(Wrappers.<SavingsContributionEntity>lambdaQuery()
                     .eq(SavingsContributionEntity::getTransactionId, transactionId));
             if (existing != null) return toOutput(goalMapper.selectById(id), true);
+        } else {
+            var transactionQuery = Wrappers.<TransactionEntity>lambdaQuery()
+                    .eq(TransactionEntity::getBookId, goal.getBookId())
+                    .eq(TransactionEntity::getCreatedUserId, userId)
+                    .eq(TransactionEntity::getRequestId, requestId);
+            TransactionEntity existingTransaction = transactionMapper.selectOne(transactionQuery);
+            if (existingTransaction != null) return toOutput(goal, true);
+            validateAccount(goal.getBookId(), goal.getTargetAccountId());
+            accountService.deposit(userId, goal.getTargetAccountId(), input.amount(), requestId,
+                    "存入目标：" + goal.getName());
+            transactionId = transactionMapper.selectOne(transactionQuery).getId();
         }
         SavingsContributionEntity contribution = new SavingsContributionEntity();
         contribution.setContributionNo(BusinessIdGenerator.next("SVC_"));
@@ -173,6 +195,12 @@ public class SavingsGoalService {
         if (contribution == null || !goalId.equals(contribution.getGoalId()) || !"MANUAL".equals(contribution.getContributionType())) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "只能撤销手工进度");
         }
+        if (!"EFFECTIVE".equals(contribution.getStatus())) return toOutput(goal, true);
+        if (contribution.getTransactionId() != null) {
+            transactionService.voidTransaction(userId, contribution.getTransactionId());
+            refreshCompletion(goal, userId);
+            return toOutput(goal, true);
+        }
         contribution.setStatus("VOIDED");
         contribution.setModifier(String.valueOf(userId));
         contributionMapper.updateById(contribution);
@@ -212,11 +240,14 @@ public class SavingsGoalService {
                 ? contributionMapper.selectList(Wrappers.<SavingsContributionEntity>lambdaQuery()
                     .eq(SavingsContributionEntity::getGoalId, goal.getId()).orderByDesc(SavingsContributionEntity::getId))
                     .stream().map(this::toContribution).toList() : List.of();
+        String status = goal.getTargetAccountId() != null && !"PAUSED".equals(goal.getStatus())
+                && !"CLOSED".equals(goal.getStatus())
+                ? completed.compareTo(goal.getTargetAmount()) >= 0 ? "COMPLETED" : "ACTIVE" : goal.getStatus();
         return new SavingsGoalOutDTO(goal.getId(), goal.getGoalNo(), goal.getBookId(), goal.getName(),
                 goal.getDescription(), goal.getTargetAmount(), completed, remaining, rate,
                 suggestion(remaining, goal.getTargetDate()), goal.getTargetAccountId(), goal.getStartDate(),
                 goal.getTargetDate(), goal.getTargetDate() != null && goal.getTargetDate().isBefore(LocalDate.now())
-                && completed.compareTo(goal.getTargetAmount()) < 0, goal.getStatus(), goal.getVersion(), contributions);
+                && completed.compareTo(goal.getTargetAmount()) < 0, status, goal.getVersion(), contributions);
     }
 
     private SavingsContributionOutDTO toContribution(SavingsContributionEntity item) {
@@ -225,6 +256,10 @@ public class SavingsGoalService {
     }
 
     private BigDecimal completed(SavingsGoalEntity goal) {
+        if (goal.getTargetAccountId() != null) {
+            AccountEntity account = accountMapper.selectById(goal.getTargetAccountId());
+            return account.getCurrentBalance();
+        }
         return goal.getInitialAmount().add(contributionMapper.sumEffective(goal.getId()));
     }
 
@@ -260,7 +295,8 @@ public class SavingsGoalService {
     private void validateAccount(Long bookId, Long accountId) {
         if (accountId == null) return;
         AccountEntity account = accountMapper.selectById(accountId);
-        if (account == null || !bookId.equals(account.getBookId()) || account.getStatus() != 1) {
+        if (account == null || !bookId.equals(account.getBookId()) || account.getStatus() != 1
+                || account.getDeletedFlag() != 0 || !"ASSET".equals(account.getAccountNature())) {
             throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "目标账户不可用");
         }
     }

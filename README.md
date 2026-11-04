@@ -143,6 +143,8 @@ Authorization: Bearer <accessToken>
 ```text
 GET  /api/v1/users/me
 PUT  /api/v1/users/me
+POST /api/v1/users/me/avatar (multipart/form-data, file; JPG/PNG/WebP, ≤2MB)
+GET  /api/v1/users/me/avatar (Bearer Token, image response)
 GET  /api/v1/features
 GET  /api/v1/books
 POST /api/v1/books

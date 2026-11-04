@@ -43,7 +43,7 @@ public class WechatLoginService {
                 context.user().getId(),
                 context.user().getUserNo(),
                 context.user().getNickName(),
-                context.user().getAvatarUrl()
+                UserAvatarService.publicUrl(context.user())
         );
         LoginBookOutDTO book = new LoginBookOutDTO(
                 context.defaultBook().getId(),

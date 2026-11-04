@@ -13,7 +13,7 @@ public record SavingsGoalUpdateInDTO(
         @NotBlank @Size(max = 128) String name,
         @Size(max = 1000) String description,
         @NotNull @DecimalMin("0.01") @Digits(integer = 17, fraction = 2) BigDecimal targetAmount,
-        Long targetAccountId,
+        @NotNull Long targetAccountId,
         @NotNull LocalDate startDate,
         LocalDate targetDate,
         @NotNull Integer version

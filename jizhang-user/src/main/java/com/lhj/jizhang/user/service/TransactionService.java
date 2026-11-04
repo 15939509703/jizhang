@@ -287,7 +287,9 @@ public class TransactionService {
                 contribution.setModifier(String.valueOf(userId));
                 savingsContributionMapper.updateById(contribution);
                 SavingsGoalEntity goal = savingsGoalMapper.selectById(contribution.getGoalId());
-                BigDecimal completed = goal.getInitialAmount().add(savingsContributionMapper.sumEffective(goal.getId()));
+                BigDecimal completed = goal.getTargetAccountId() == null
+                        ? goal.getInitialAmount().add(savingsContributionMapper.sumEffective(goal.getId()))
+                        : accountMapper.selectById(goal.getTargetAccountId()).getCurrentBalance();
                 if ("COMPLETED".equals(goal.getStatus()) && completed.compareTo(goal.getTargetAmount()) < 0) {
                     goal.setStatus("ACTIVE");
                     goal.setVersion(goal.getVersion() + 1);

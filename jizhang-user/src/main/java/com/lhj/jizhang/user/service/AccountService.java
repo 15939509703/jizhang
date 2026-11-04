@@ -159,6 +159,26 @@ public class AccountService {
         return toOutput(account);
     }
 
+    /**
+     * 在账户锁内增加余额，并通过余额调整留下可冲正的分录。
+     *
+     * @param userId 操作人
+     * @param accountId 目标账户
+     * @param amount 存入金额
+     * @param requestId 幂等请求ID
+     * @param note 调整备注
+     * @return 调整后的账户
+     */
+    @Transactional
+    public AccountOutDTO deposit(Long userId, Long accountId, BigDecimal amount, String requestId, String note) {
+        AccountEntity account = accountMapper.selectByIdForUpdate(accountId);
+        if (account == null || account.getDeletedFlag() != 0 || account.getStatus() != 1) {
+            throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "账户不存在或不可用");
+        }
+        return adjust(userId, accountId, new AccountAdjustInDTO(requestId,
+                account.getCurrentBalance().add(amount), note));
+    }
+
     public AccountEntryPageOutDTO entries(Long userId, Long accountId, Long cursorId, Integer limit) {
         AccountEntity account = requireAccount(accountId);
         bookAccessService.requireMember(userId, account.getBookId());

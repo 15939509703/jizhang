@@ -108,7 +108,7 @@ public class WechatUserProvisioningService {
 
     private void updateUserProfile(UserEntity user, WechatLoginInDTO input) {
         user.setLastLoginTime(LocalDateTime.now(ZoneOffset.UTC));
-        if (input.avatarUrl() != null && !input.avatarUrl().isBlank()) {
+        if (!UserAvatarService.hasCustomAvatar(user) && input.avatarUrl() != null && !input.avatarUrl().isBlank()) {
             user.setAvatarUrl(input.avatarUrl());
         }
         user.setModifier(String.valueOf(user.getId()));

@@ -39,6 +39,6 @@ public class UserProfileService {
     }
 
     private LoginUserOutDTO toOutput(UserEntity user) {
-        return new LoginUserOutDTO(user.getId(), user.getUserNo(), user.getNickName(), user.getAvatarUrl());
+        return new LoginUserOutDTO(user.getId(), user.getUserNo(), user.getNickName(), UserAvatarService.publicUrl(user));
     }
 }

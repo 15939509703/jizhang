@@ -6,6 +6,9 @@ import com.lhj.jizhang.user.dto.AccountCreateInDTO;
 import com.lhj.jizhang.user.dto.AccountUpdateInDTO;
 import com.lhj.jizhang.user.dto.AccountOutDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
+import com.lhj.jizhang.user.entity.AccountEntryEntity;
+import com.lhj.jizhang.user.entity.BookEntity;
+import com.lhj.jizhang.user.entity.TransactionEntity;
 import com.lhj.jizhang.user.mapper.AccountEntryMapper;
 import com.lhj.jizhang.user.mapper.AccountMapper;
 import com.lhj.jizhang.user.mapper.BookMapper;
@@ -85,6 +88,33 @@ class AccountServiceTest {
         verify(accountMapper).updateById(captor.capture());
         assertEquals(1, captor.getValue().getDeletedFlag());
         assertEquals(0, captor.getValue().getStatus());
+    }
+
+    @Test
+    void shouldDepositUsingLockedBalanceAndRecordAdjustment() {
+        AccountMapper accountMapper = mock(AccountMapper.class);
+        AccountEntryMapper entryMapper = mock(AccountEntryMapper.class);
+        TransactionMapper transactionMapper = mock(TransactionMapper.class);
+        BookMapper bookMapper = mock(BookMapper.class);
+        BookAccessService bookAccessService = mock(BookAccessService.class);
+        AccountEntity account = account();
+        account.setCurrentBalance(new BigDecimal("100.00"));
+        BookEntity book = new BookEntity();
+        book.setCurrencyCode("CNY");
+        when(accountMapper.selectByIdForUpdate(20L)).thenReturn(account);
+        when(bookMapper.selectById(1L)).thenReturn(book);
+        AccountService service = new AccountService(accountMapper, entryMapper, transactionMapper,
+                bookMapper, bookAccessService);
+
+        AccountOutDTO result = service.deposit(7L, 20L, new BigDecimal("25.00"), "request", "存入目标");
+
+        assertEquals(new BigDecimal("125.00"), result.currentBalance());
+        ArgumentCaptor<AccountEntryEntity> entry = ArgumentCaptor.forClass(AccountEntryEntity.class);
+        verify(entryMapper).insert(entry.capture());
+        assertEquals(new BigDecimal("25.00"), entry.getValue().getSignedAmount());
+        ArgumentCaptor<TransactionEntity> transaction = ArgumentCaptor.forClass(TransactionEntity.class);
+        verify(transactionMapper).insert(transaction.capture());
+        assertEquals("ADJUSTMENT", transaction.getValue().getTransactionType());
     }
 
     private AccountService service(AccountMapper accountMapper, BookAccessService bookAccessService) {

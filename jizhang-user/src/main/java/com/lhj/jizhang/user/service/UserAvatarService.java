@@ -116,7 +116,7 @@ public class UserAvatarService {
     }
 
     /** 根据图片文件头判断格式，不信任上传文件名和声明的类型。 */
-    private String imageExtension(byte[] bytes) {
+    static String imageExtension(byte[] bytes) {
         if (bytes.length >= 3 && (bytes[0] & 0xff) == 0xff && (bytes[1] & 0xff) == 0xd8
                 && (bytes[2] & 0xff) == 0xff) return ".jpg";
         if (bytes.length >= 8 && (bytes[0] & 0xff) == 0x89 && bytes[1] == 'P'

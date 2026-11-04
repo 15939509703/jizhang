@@ -24,6 +24,7 @@ import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -86,7 +87,8 @@ public class BookService {
         BookEntity book = requireBook(bookId);
         book.setName(input.name().trim());
         book.setDescription(blankToNull(input.description()));
-        book.setCoverUrl(blankToNull(input.coverUrl()));
+        String coverUrl = blankToNull(input.coverUrl());
+        if (!Objects.equals(BookCoverService.publicUrl(book), coverUrl)) book.setCoverUrl(coverUrl);
         book.setVersion(book.getVersion() + 1);
         book.setModifier(String.valueOf(userId));
         bookMapper.updateById(book);
@@ -176,12 +178,12 @@ public class BookService {
         return account;
     }
 
-    private BookOutDTO toOutput(BookEntity book, String role) {
+    BookOutDTO toOutput(BookEntity book, String role) {
         return new BookOutDTO(book.getId(), book.getBookNo(), book.getName(), book.getDescription(),
-                book.getCoverUrl(), book.getCurrencyCode(), book.getTimezone(), role);
+                BookCoverService.publicUrl(book), book.getCurrencyCode(), book.getTimezone(), role);
     }
 
-    private BookEntity requireBook(Long bookId) {
+    BookEntity requireBook(Long bookId) {
         BookEntity book = bookMapper.selectById(bookId);
         if (book == null || book.getStatus() == null || book.getStatus() == 0) {
             throw new BusinessException(ErrorCodes.BOOK_NOT_FOUND, "账本不存在或不可用");

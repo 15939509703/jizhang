@@ -149,6 +149,7 @@ GET  /api/v1/features
 GET  /api/v1/books
 POST /api/v1/books
 PUT  /api/v1/books/{id}
+DELETE /api/v1/books/{id}                 # 仅所有者，永久删除账本及关联数据
 GET  /api/v1/books/{id}/members
 POST /api/v1/books/{id}/members
 PUT  /api/v1/books/{bookId}/members/{memberId}

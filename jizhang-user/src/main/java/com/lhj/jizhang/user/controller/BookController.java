@@ -10,6 +10,7 @@ import com.lhj.jizhang.user.dto.BookOutDTO;
 import com.lhj.jizhang.user.dto.BookUpdateInDTO;
 import com.lhj.jizhang.user.model.AttachmentDownload;
 import com.lhj.jizhang.user.service.BookCoverService;
+import com.lhj.jizhang.user.service.BookDeletionService;
 import com.lhj.jizhang.user.service.BookMemberService;
 import com.lhj.jizhang.user.service.BookService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -41,12 +42,14 @@ public class BookController {
     private final BookService bookService;
     private final BookMemberService bookMemberService;
     private final BookCoverService bookCoverService;
+    private final BookDeletionService bookDeletionService;
 
     public BookController(BookService bookService, BookMemberService bookMemberService,
-                          BookCoverService bookCoverService) {
+                          BookCoverService bookCoverService, BookDeletionService bookDeletionService) {
         this.bookService = bookService;
         this.bookMemberService = bookMemberService;
         this.bookCoverService = bookCoverService;
+        this.bookDeletionService = bookDeletionService;
     }
 
     @Operation(summary = "查询账本列表")
@@ -74,6 +77,17 @@ public class BookController {
             @RequestBody @Valid BookUpdateInDTO input
     ) {
         return ApiResponse.success(bookService.update(user.userId(), id, input));
+    }
+
+    /** 仅账本所有者可永久删除账本及其全部数据。 */
+    @Operation(summary = "永久删除账本及关联数据")
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long id
+    ) {
+        bookDeletionService.delete(user.userId(), id);
+        return ApiResponse.success(null);
     }
 
     /** 上传账本封面，仅所有者和管理员可操作。 */

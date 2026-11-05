@@ -54,4 +54,19 @@ class BookAccessServiceTest {
 
         assertEquals(ErrorCodes.BOOK_ACCESS_DENIED, exception.getCode());
     }
+
+    /** 管理员可以管理成员，但无权执行仅所有者允许的删除操作。 */
+    @Test
+    void shouldRejectAdminOwnerAccess() {
+        BookMemberMapper mapper = mock(BookMemberMapper.class);
+        BookMemberEntity member = new BookMemberEntity();
+        member.setRole("ADMIN");
+        when(mapper.selectOne(any(Wrapper.class))).thenReturn(member);
+        BookAccessService service = new BookAccessService(mapper);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.requireOwner(7L, 1L));
+
+        assertEquals(ErrorCodes.BOOK_ACCESS_DENIED, exception.getCode());
+    }
 }

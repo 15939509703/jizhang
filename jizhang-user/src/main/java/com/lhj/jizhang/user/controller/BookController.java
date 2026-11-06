@@ -7,6 +7,7 @@ import com.lhj.jizhang.user.dto.BookMemberInviteInDTO;
 import com.lhj.jizhang.user.dto.BookMemberOutDTO;
 import com.lhj.jizhang.user.dto.BookMemberRoleInDTO;
 import com.lhj.jizhang.user.dto.BookOutDTO;
+import com.lhj.jizhang.user.dto.BookRemarkInDTO;
 import com.lhj.jizhang.user.dto.BookUpdateInDTO;
 import com.lhj.jizhang.user.model.AttachmentDownload;
 import com.lhj.jizhang.user.service.BookCoverService;
@@ -77,6 +78,17 @@ public class BookController {
             @RequestBody @Valid BookUpdateInDTO input
     ) {
         return ApiResponse.success(bookService.update(user.userId(), id, input));
+    }
+
+    /** 修改当前登录用户对账本所属人的私有备注。 */
+    @Operation(summary = "修改我的账本备注")
+    @PutMapping("/{id}/my-remark")
+    public ApiResponse<BookOutDTO> updateRemark(
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable Long id,
+            @RequestBody @Valid BookRemarkInDTO input
+    ) {
+        return ApiResponse.success(bookService.updateRemark(user.userId(), id, input.remarkName()));
     }
 
     /** 仅账本所有者可永久删除账本及其全部数据。 */

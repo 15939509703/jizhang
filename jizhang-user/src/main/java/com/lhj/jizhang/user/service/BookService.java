@@ -64,7 +64,7 @@ public class BookService {
                 .collect(Collectors.toMap(BookEntity::getId, Function.identity()));
         return memberships.stream()
                 .filter(member -> books.containsKey(member.getBookId()))
-                .map(member -> toOutput(books.get(member.getBookId()), member.getRole()))
+                .map(member -> toOutput(books.get(member.getBookId()), member.getRole(), member.getRemarkName()))
                 .toList();
     }
 
@@ -73,7 +73,7 @@ public class BookService {
         BookEntity book = createBook(userId, input.name(), input.description(),
                 valueOrDefault(input.currencyCode(), "CNY"),
                 valueOrDefault(input.timezone(), "Asia/Shanghai"));
-        return toOutput(book, "OWNER");
+        return toOutput(book, "OWNER", null);
     }
 
     @Transactional
@@ -92,7 +92,17 @@ public class BookService {
         book.setVersion(book.getVersion() + 1);
         book.setModifier(String.valueOf(userId));
         bookMapper.updateById(book);
-        return toOutput(book, member.getRole());
+        return toOutput(book, member.getRole(), member.getRemarkName());
+    }
+
+    /** 仅更新当前登录用户在该账本的私有备注，不修改账本及所属人资料。 */
+    @Transactional
+    public BookOutDTO updateRemark(Long userId, Long bookId, String remarkName) {
+        BookMemberEntity member = bookAccessService.requireMember(userId, bookId);
+        BookEntity book = requireBook(bookId);
+        String normalizedRemark = blankToNull(remarkName);
+        bookMemberMapper.updateRemark(member.getId(), normalizedRemark, String.valueOf(userId));
+        return toOutput(book, member.getRole(), normalizedRemark);
     }
 
     private BookEntity createBook(Long userId, String name, String description, String currencyCode, String timezone) {
@@ -178,9 +188,9 @@ public class BookService {
         return account;
     }
 
-    BookOutDTO toOutput(BookEntity book, String role) {
+    BookOutDTO toOutput(BookEntity book, String role, String remarkName) {
         return new BookOutDTO(book.getId(), book.getBookNo(), book.getName(), book.getDescription(),
-                BookCoverService.publicUrl(book), book.getCurrencyCode(), book.getTimezone(), role);
+                BookCoverService.publicUrl(book), book.getCurrencyCode(), book.getTimezone(), role, remarkName);
     }
 
     BookEntity requireBook(Long bookId) {

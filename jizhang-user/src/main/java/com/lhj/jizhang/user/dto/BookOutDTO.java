@@ -19,6 +19,8 @@ public record BookOutDTO(
         @Schema(description = "账本时区", example = "Asia/Shanghai")
         String timezone,
         @Schema(description = "当前用户在账本中的角色", example = "OWNER")
-        String role
+        String role,
+        @Schema(description = "当前用户对账本所属人的私有备注", example = "妈妈")
+        String remarkName
 ) {
 }

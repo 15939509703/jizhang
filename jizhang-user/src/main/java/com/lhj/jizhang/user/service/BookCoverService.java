@@ -62,7 +62,7 @@ public class BookCoverService {
             throw exception;
         }
         if (isOwnedKey(bookId, previousKey)) deleteQuietly(uploadRoot.resolve(previousKey));
-        return bookService.toOutput(book, member.getRole());
+        return bookService.toOutput(book, member.getRole(), member.getRemarkName());
     }
 
     /** 仅允许账本成员下载本地存储的封面。 */

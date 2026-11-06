@@ -159,7 +159,7 @@ public class SyncService {
 
     private BookOutDTO toBook(BookEntity book, BookMemberEntity member) {
         return new BookOutDTO(book.getId(), book.getBookNo(), book.getName(), book.getDescription(),
-                book.getCoverUrl(), book.getCurrencyCode(), book.getTimezone(), member.getRole());
+                book.getCoverUrl(), book.getCurrencyCode(), book.getTimezone(), member.getRole(), member.getRemarkName());
     }
 
     private CategoryOutDTO toCategory(CategoryEntity category) {

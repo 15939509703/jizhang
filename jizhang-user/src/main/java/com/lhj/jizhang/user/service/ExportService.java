@@ -91,7 +91,7 @@ public class ExportService {
 
     @Transactional
     public ExportTaskOutDTO create(Long userId, ExportCreateInDTO input) {
-        bookAccessService.requirePermission(userId, input.bookId(), BookPermission.EXPORT_DATA);
+        bookAccessService.requireLedgerFileAccess(userId, input.bookId());
         validateInput(input);
         ExportTaskEntity task = new ExportTaskEntity();
         task.setTaskNo(BusinessIdGenerator.next("EXP_"));
@@ -309,7 +309,7 @@ public class ExportService {
         if (task == null || !userId.equals(task.getUserId())) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "导出任务不存在");
         }
-        bookAccessService.requirePermission(userId, task.getBookId(), BookPermission.EXPORT_DATA);
+        bookAccessService.requireLedgerFileAccess(userId, task.getBookId());
         return task;
     }
 

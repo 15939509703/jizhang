@@ -1,5 +1,8 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.BookMenu;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -64,7 +67,7 @@ public class BudgetService {
     }
 
     public BudgetOutDTO getBudget(Long userId, Long bookId, YearMonth month) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.BUDGET);
         BookEntity book = requireBook(bookId);
         YearMonth targetMonth = resolveMonth(book, month);
         BudgetEntity budget = findBudget(bookId, targetMonth);
@@ -74,7 +77,7 @@ public class BudgetService {
 
     @Transactional
     public BudgetOutDTO saveBudget(Long userId, BudgetSaveInDTO input) {
-        bookAccessService.requireWritable(userId, input.bookId());
+        bookAccessService.requireAction(userId, input.bookId(), BookAction.BUDGET_MANAGE);
         BookEntity book = requireBook(input.bookId());
         YearMonth month = YearMonth.parse(input.month());
         validateItems(input);

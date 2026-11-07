@@ -18,6 +18,9 @@ public final class ErrorCodes {
     public static final String TRANSACTION_INVALID = "TRANSACTION_INVALID";
     public static final String TRANSACTION_CONFLICT = "TRANSACTION_CONFLICT";
     public static final String MEMBER_INVALID = "MEMBER_INVALID";
+    public static final String MEMBER_POLICY_CONFLICT = "MEMBER_POLICY_CONFLICT";
+    public static final String MEMBER_POLICY_UPGRADE_REQUIRED = "MEMBER_POLICY_UPGRADE_REQUIRED";
+    public static final String MEMBER_INVITATION_REISSUE_REQUIRED = "MEMBER_INVITATION_REISSUE_REQUIRED";
     public static final String ATTACHMENT_INVALID = "ATTACHMENT_INVALID";
 
     private ErrorCodes() {

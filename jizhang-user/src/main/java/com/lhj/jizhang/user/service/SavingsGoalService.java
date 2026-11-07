@@ -1,5 +1,8 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.BookMenu;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -54,7 +57,7 @@ public class SavingsGoalService {
     }
 
     public List<SavingsGoalOutDTO> list(Long userId, Long bookId, String status) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.SAVINGS_GOALS);
         if (status != null && !STATUSES.contains(status)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "储蓄目标状态不正确");
         }
@@ -66,13 +69,13 @@ public class SavingsGoalService {
 
     public SavingsGoalOutDTO get(Long userId, Long id) {
         SavingsGoalEntity goal = requireGoal(id);
-        bookAccessService.requireMember(userId, goal.getBookId());
+        bookAccessService.requireMenu(userId, goal.getBookId(), BookMenu.SAVINGS_GOALS);
         return toOutput(goal, true);
     }
 
     @Transactional
     public SavingsGoalOutDTO create(Long userId, SavingsGoalCreateInDTO input) {
-        bookAccessService.requireWritable(userId, input.bookId());
+        bookAccessService.requireAction(userId, input.bookId(), BookAction.SAVINGS_GOALS_MANAGE);
         validateDates(input.startDate(), input.targetDate());
         validateAccount(input.bookId(), input.targetAccountId());
         SavingsGoalEntity goal = new SavingsGoalEntity();
@@ -97,7 +100,7 @@ public class SavingsGoalService {
     @Transactional
     public SavingsGoalOutDTO update(Long userId, Long id, SavingsGoalUpdateInDTO input) {
         SavingsGoalEntity goal = requireLockedGoal(id);
-        bookAccessService.requireWritable(userId, goal.getBookId());
+        bookAccessService.requireAction(userId, goal.getBookId(), BookAction.SAVINGS_GOALS_MANAGE);
         validateVersion(goal, input.version());
         validateDates(input.startDate(), input.targetDate());
         validateAccount(goal.getBookId(), input.targetAccountId());
@@ -109,7 +112,7 @@ public class SavingsGoalService {
     @Transactional
     public void delete(Long userId, Long id) {
         SavingsGoalEntity goal = requireLockedGoal(id);
-        bookAccessService.requireWritable(userId, goal.getBookId());
+        bookAccessService.requireAction(userId, goal.getBookId(), BookAction.SAVINGS_GOALS_MANAGE);
         goal.setDeletedFlag(1);
         goal.setStatus("CLOSED");
         goal.setVersion(goal.getVersion() + 1);
@@ -121,7 +124,7 @@ public class SavingsGoalService {
     public SavingsGoalOutDTO addContribution(Long userId, Long id, SavingsContributionInDTO input) {
         SavingsGoalEntity goal = goalMapper.selectByIdForUpdate(id);
         if (goal == null || goal.getDeletedFlag() == 1) throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "储蓄目标不存在");
-        bookAccessService.requireWritable(userId, goal.getBookId());
+        bookAccessService.requireAction(userId, goal.getBookId(), BookAction.SAVINGS_GOALS_CONTRIBUTE);
         if (!"ACTIVE".equals(goal.getStatus()) && !"COMPLETED".equals(goal.getStatus())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "当前目标不能存入");
         }
@@ -177,7 +180,7 @@ public class SavingsGoalService {
         }
         SavingsGoalEntity goal = goalMapper.selectByIdForUpdate(id);
         if (goal == null || goal.getDeletedFlag() == 1) throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "储蓄目标不存在");
-        bookAccessService.requireWritable(userId, goal.getBookId());
+        bookAccessService.requireAction(userId, goal.getBookId(), BookAction.SAVINGS_GOALS_MANAGE);
         BigDecimal completed = completed(goal);
         goal.setStatus("ACTIVE".equals(status) && completed.compareTo(goal.getTargetAmount()) >= 0 ? "COMPLETED" : status);
         goal.setVersion(goal.getVersion() + 1);
@@ -190,7 +193,7 @@ public class SavingsGoalService {
     public SavingsGoalOutDTO removeManualContribution(Long userId, Long goalId, Long contributionId) {
         SavingsGoalEntity goal = goalMapper.selectByIdForUpdate(goalId);
         if (goal == null) throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "储蓄目标不存在");
-        bookAccessService.requireWritable(userId, goal.getBookId());
+        bookAccessService.requireAction(userId, goal.getBookId(), BookAction.SAVINGS_GOALS_CONTRIBUTE);
         SavingsContributionEntity contribution = contributionMapper.selectById(contributionId);
         if (contribution == null || !goalId.equals(contribution.getGoalId()) || !"MANUAL".equals(contribution.getContributionType())) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "只能撤销手工进度");

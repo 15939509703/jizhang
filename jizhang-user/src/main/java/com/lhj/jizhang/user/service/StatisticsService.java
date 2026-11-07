@@ -14,6 +14,7 @@ import com.lhj.jizhang.user.mapper.TransactionMapper;
 import com.lhj.jizhang.user.model.StatisticsBreakdownAggregate;
 import com.lhj.jizhang.user.model.StatisticsPeriodAggregate;
 import com.lhj.jizhang.user.model.TransactionSummaryAggregate;
+import com.lhj.jizhang.user.model.BookMenu;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -52,7 +53,7 @@ public class StatisticsService {
 
     public StatisticsDashboardOutDTO dashboard(Long userId, Long bookId, YearMonth month, Integer year,
                                                LocalDate weekStart) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.REPORTS);
         BookEntity book = requireBook(bookId);
         ZoneId zone = ZoneId.of(book.getTimezone());
         YearMonth targetMonth = month == null ? YearMonth.now(zone) : month;
@@ -89,7 +90,7 @@ public class StatisticsService {
 
     /** 按账本权限读取历年及指定自然年的月度收支。 */
     public BillOverviewOutDTO billOverview(Long userId, Long bookId, Integer year) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.REPORTS);
         BookEntity book = requireBook(bookId);
         ZoneId zone = ZoneId.of(book.getTimezone());
         int targetYear = year == null ? LocalDate.now(zone).getYear() : validateYear(year);

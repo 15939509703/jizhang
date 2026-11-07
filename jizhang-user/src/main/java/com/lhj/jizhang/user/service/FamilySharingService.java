@@ -2,11 +2,13 @@ package com.lhj.jizhang.user.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
 import com.lhj.jizhang.common.util.BusinessIdGenerator;
 import com.lhj.jizhang.user.dto.BookAuditLogOutDTO;
+import com.lhj.jizhang.user.dto.BookAccessOutDTO;
 import com.lhj.jizhang.user.dto.BookInvitationCreateInDTO;
 import com.lhj.jizhang.user.dto.BookInvitationOutDTO;
 import com.lhj.jizhang.user.dto.BookMemberOutDTO;
@@ -33,7 +35,6 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
-import java.util.EnumSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +70,7 @@ public class FamilySharingService {
         if ("ADMIN".equals(input.role()) && !"OWNER".equals(actor.getRole())) {
             throw new BusinessException(ErrorCodes.BOOK_ACCESS_DENIED, "仅账本所有者可邀请管理员", HttpStatus.FORBIDDEN);
         }
+        BookAccessOutDTO effective = validateInvitationPolicy(bookId, input);
         byte[] bytes = new byte[32];
         secureRandom.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -77,6 +79,9 @@ public class FamilySharingService {
         invitation.setBookId(bookId);
         invitation.setInviterUserId(userId);
         invitation.setDefaultRole(input.role());
+        invitation.setMenuPermissions(serialize(effective.menuPermissions()));
+        invitation.setActionPermissions(serialize(effective.actionPermissions()));
+        invitation.setTransactionScope(effective.transactionScope());
         invitation.setTokenHash(hash(token));
         invitation.setExpiredTime(LocalDateTime.now(ZoneOffset.UTC).plusHours(input.expiresInHours()));
         invitation.setStatus("ACTIVE");
@@ -91,23 +96,32 @@ public class FamilySharingService {
         BookInvitationEntity invitation = invitationMapper.selectOne(Wrappers.<BookInvitationEntity>lambdaQuery()
                 .eq(BookInvitationEntity::getTokenHash, hash(token)));
         if (invitation == null) throw invalidInvitation();
+        requireSnapshot(invitation);
         return output(invitation, null);
     }
 
     @Transactional
     public BookMemberOutDTO accept(Long userId, String token) {
         BookInvitationEntity invitation = invitationMapper.selectByHashForUpdate(hash(token));
+        if (invitation != null) {
+            requireSnapshot(invitation);
+            snapshotAccess(invitation);
+        }
         if (invitation == null || !"ACTIVE".equals(invitation.getStatus())
                 || invitation.getExpiredTime().isBefore(LocalDateTime.now(ZoneOffset.UTC))) {
             throw invalidInvitation();
         }
         BookMemberEntity member = memberMapper.selectOne(Wrappers.<BookMemberEntity>lambdaQuery()
                 .eq(BookMemberEntity::getBookId, invitation.getBookId()).eq(BookMemberEntity::getUserId, userId));
+        if (member != null && member.getStatus() == 1) {
+            throw new BusinessException(ErrorCodes.MEMBER_INVALID, "已是账本成员，不能通过邀请重置权限", HttpStatus.CONFLICT);
+        }
         if (member == null) {
             member = new BookMemberEntity();
             member.setBookId(invitation.getBookId());
             member.setUserId(userId);
-            member.setRole(invitation.getDefaultRole());
+            copySnapshot(member, invitation);
+            member.setPolicyVersion(0L);
             member.setStatus(1);
             member.setInvitedBy(invitation.getInviterUserId());
             member.setJoinedTime(LocalDateTime.now(ZoneOffset.UTC));
@@ -115,19 +129,15 @@ public class FamilySharingService {
             member.setModifier(String.valueOf(userId));
             memberMapper.insert(member);
         } else {
-            if ("OWNER".equals(member.getRole())) {
-                throw new BusinessException(ErrorCodes.MEMBER_INVALID, "账本所有者无需接受邀请");
+            if (memberMapper.reactivateWithInvitation(member.getId(), invitation.getBookId(),
+                    member.getPolicyVersion(), invitation.getDefaultRole(), invitation.getMenuPermissions(),
+                    invitation.getActionPermissions(), invitation.getTransactionScope(), invitation.getInviterUserId(),
+                    String.valueOf(userId)) != 1) {
+                throw new BusinessException(ErrorCodes.MEMBER_POLICY_CONFLICT, "成员状态已变化，请刷新后重试",
+                        HttpStatus.CONFLICT);
             }
-            member.setRole(invitation.getDefaultRole());
-            member.setPermissions(null);
-            if (member.getStatus() == 0) {
-                member.setStatus(1);
-                member.setJoinedTime(LocalDateTime.now(ZoneOffset.UTC));
-            }
-            member.setInvitedBy(invitation.getInviterUserId());
-            member.setModifier(String.valueOf(userId));
-            memberMapper.updateById(member);
-            memberMapper.clearPermissions(member.getId());
+            copySnapshot(member, invitation);
+            member.setStatus(1);
         }
         invitation.setStatus("ACCEPTED");
         invitation.setAcceptedUserId(userId);
@@ -157,28 +167,7 @@ public class FamilySharingService {
     public BookMemberOutDTO updatePermissions(Long userId, Long bookId, Long memberId,
                                               BookMemberPermissionsInDTO input) {
         accessService.requirePermission(userId, bookId, BookPermission.MANAGE_MEMBERS);
-        BookMemberEntity member = memberMapper.selectById(memberId);
-        if (member == null || !bookId.equals(member.getBookId()) || member.getStatus() == 0) {
-            throw new BusinessException(ErrorCodes.MEMBER_INVALID, "成员不存在");
-        }
-        if ("OWNER".equals(member.getRole())) {
-            throw new BusinessException(ErrorCodes.MEMBER_INVALID, "所有者权限不能覆盖");
-        }
-        if (!EnumSet.allOf(BookPermission.class).stream().map(Enum::name).toList()
-                .containsAll(input.permissions().keySet())) {
-            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "包含未知权限");
-        }
-        try {
-            member.setPermissions(objectMapper.writeValueAsString(input.permissions()));
-        } catch (JsonProcessingException exception) {
-            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "权限配置无效");
-        }
-        member.setModifier(String.valueOf(userId));
-        memberMapper.updateById(member);
-        audit(bookId, userId, "MEMBER_PERMISSIONS_CHANGED", "MEMBER", memberId, "修改成员权限");
-        UserEntity target = userMapper.selectById(member.getUserId());
-        return new BookMemberOutDTO(member.getId(), member.getUserId(), target.getUserNo(), target.getNickName(),
-                target.getAvatarUrl(), member.getRole(), member.getStatus());
+        throw upgradeRequired();
     }
 
     public List<BookAuditLogOutDTO> auditLogs(Long userId, Long bookId) {
@@ -206,7 +195,79 @@ public class FamilySharingService {
                 && invitation.getExpiredTime().isBefore(LocalDateTime.now(ZoneOffset.UTC)) ? "EXPIRED" : invitation.getStatus();
         return new BookInvitationOutDTO(invitation.getId(), invitation.getInvitationNo(), invitation.getBookId(),
                 book.getName(), inviter.getNickName(), invitation.getDefaultRole(), status,
-                invitation.getExpiredTime().toInstant(ZoneOffset.UTC), token);
+                invitation.getExpiredTime().toInstant(ZoneOffset.UTC), token, snapshotAccess(invitation));
+    }
+
+    /** 邀请创建时校验完整策略及角色上限，不为缺失字段填默认全开。 */
+    private BookAccessOutDTO validateInvitationPolicy(Long bookId, BookInvitationCreateInDTO input) {
+        if (input.menuPermissions() == null || input.actionPermissions() == null
+                || input.transactionScope() == null) {
+            throw upgradeRequired();
+        }
+        BookMemberEntity candidate = new BookMemberEntity();
+        candidate.setBookId(bookId);
+        candidate.setRole(input.role());
+        candidate.setMenuPermissions(serialize(input.menuPermissions()));
+        candidate.setPermissions(serialize(input.actionPermissions()));
+        candidate.setTransactionScope(input.transactionScope());
+        BookAccessOutDTO effective = accessService.evaluate(candidate);
+        if (!effective.actionPermissions().equals(input.actionPermissions())) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "邀请权限配置无效");
+        }
+        return effective;
+    }
+
+    /** 无策略快照的历史邀请不得预览或接受，必须重新发起。 */
+    private void requireSnapshot(BookInvitationEntity invitation) {
+        if (invitation.getMenuPermissions() == null || invitation.getActionPermissions() == null
+                || invitation.getTransactionScope() == null) {
+            throw new BusinessException(ErrorCodes.MEMBER_INVITATION_REISSUE_REQUIRED, "旧邀请已失效，请重新邀请",
+                    HttpStatus.CONFLICT);
+        }
+    }
+
+    /** 从已冻结的邀请构造有效权限摘要，非法快照拒绝访问。 */
+    private BookAccessOutDTO snapshotAccess(BookInvitationEntity invitation) {
+        BookMemberEntity candidate = new BookMemberEntity();
+        candidate.setBookId(invitation.getBookId());
+        candidate.setRole(invitation.getDefaultRole());
+        candidate.setMenuPermissions(invitation.getMenuPermissions());
+        candidate.setPermissions(invitation.getActionPermissions());
+        candidate.setTransactionScope(invitation.getTransactionScope());
+        BookAccessOutDTO effective = accessService.evaluate(candidate);
+        try {
+            Map<String, Boolean> actions = objectMapper.readValue(invitation.getActionPermissions(),
+                    new TypeReference<>() {});
+            if (!effective.actionPermissions().equals(actions)) {
+                throw new BusinessException(ErrorCodes.MEMBER_INVALID, "邀请权限配置无效");
+            }
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCodes.MEMBER_INVALID, "邀请权限配置无效");
+        }
+        return effective;
+    }
+
+    /** 将快照原样复制到成员策略，不按角色重新计算默认权限。 */
+    private void copySnapshot(BookMemberEntity member, BookInvitationEntity invitation) {
+        member.setRole(invitation.getDefaultRole());
+        member.setMenuPermissions(invitation.getMenuPermissions());
+        member.setPermissions(invitation.getActionPermissions());
+        member.setTransactionScope(invitation.getTransactionScope());
+    }
+
+    /** 编码已校验的菜单和动作配置。 */
+    private String serialize(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "邀请权限配置无效");
+        }
+    }
+
+    /** 要求旧客户端升级为完整策略写接口。 */
+    private BusinessException upgradeRequired() {
+        return new BusinessException(ErrorCodes.MEMBER_POLICY_UPGRADE_REQUIRED, "请升级客户端并提交完整权限配置",
+                HttpStatus.CONFLICT);
     }
 
     private void audit(Long bookId, Long userId, String action, String type, Long objectId, String summary) {

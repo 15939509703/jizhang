@@ -14,6 +14,8 @@ public class NotificationOutboxEntity {
     private Long id;
     private String eventKey;
     private Long userId;
+    /** 发送时重新校验权限所需的账本 ID。 */
+    private Long bookId;
     private String scene;
     private String templateId;
     private String pagePath;

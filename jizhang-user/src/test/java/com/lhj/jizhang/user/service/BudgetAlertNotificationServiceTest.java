@@ -4,6 +4,10 @@ import com.lhj.jizhang.user.dto.BudgetOutDTO;
 import com.lhj.jizhang.user.entity.BookEntity;
 import com.lhj.jizhang.user.entity.TransactionEntity;
 import com.lhj.jizhang.user.mapper.BookMapper;
+import com.lhj.jizhang.user.model.BookMenu;
+import com.lhj.jizhang.common.exception.BusinessException;
+import com.lhj.jizhang.common.exception.ErrorCodes;
+import org.springframework.http.HttpStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -22,13 +26,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class BudgetAlertNotificationServiceTest {
     @Mock private BudgetService budgetService;
     @Mock private BookMapper bookMapper;
     @Mock private WechatSubscriptionService subscriptionService;
+    @Mock private BookAccessService accessService;
     @InjectMocks private BudgetAlertNotificationService service;
+
+    /** 禁用预算不应导致无关的账单写入事务失败。 */
+    @Test
+    void disabledBudgetSkipsOptionalAlert() {
+        doThrow(new BusinessException(ErrorCodes.BOOK_ACCESS_DENIED, "无权访问", HttpStatus.FORBIDDEN))
+                .when(accessService).requireMenu(7L, 1L, BookMenu.BUDGET);
+
+        service.onExpenseCreated(7L, expense());
+
+        verify(bookMapper, never()).selectById(any());
+        verify(subscriptionService, never()).enqueue(any(), any(), any(), any(), any(), any());
+    }
 
     /** 验证预算过半提醒使用模板的五个字段。 */
     @Test
@@ -40,7 +60,7 @@ class BudgetAlertNotificationServiceTest {
         service.onExpenseCreated(7L, expense());
 
         ArgumentCaptor<Map> data = ArgumentCaptor.forClass(Map.class);
-        verify(subscriptionService).enqueue(eq("BUDGET_1_2026-10_HALF"), eq(7L),
+        verify(subscriptionService).enqueue(eq("BUDGET_1_2026-10_HALF"), eq(7L), eq(1L),
                 eq("BUDGET_ALERT"), eq("/pages/budget/budget"), data.capture());
         assertEquals(5, data.getValue().size());
         assertTrue(((String) ((Map<?, ?>) data.getValue().get("time1")).get("value"))
@@ -61,7 +81,7 @@ class BudgetAlertNotificationServiceTest {
         service.onExpenseCreated(7L, expense());
 
         ArgumentCaptor<Map> data = ArgumentCaptor.forClass(Map.class);
-        verify(subscriptionService).enqueue(eq("BUDGET_1_2026-10_WARNING"), eq(7L),
+        verify(subscriptionService).enqueue(eq("BUDGET_1_2026-10_WARNING"), eq(7L), eq(1L),
                 eq("BUDGET_ALERT"), eq("/pages/budget/budget"), data.capture());
         assertEquals(Map.of("value", "家庭账本预算达到预警线"), data.getValue().get("thing4"));
         assertEquals(Map.of("value", "800"), data.getValue().get("amount6"));
@@ -77,7 +97,7 @@ class BudgetAlertNotificationServiceTest {
         service.onExpenseCreated(7L, expense());
 
         ArgumentCaptor<Map> data = ArgumentCaptor.forClass(Map.class);
-        verify(subscriptionService).enqueue(eq("BUDGET_1_2026-10_OVER"), eq(7L),
+        verify(subscriptionService).enqueue(eq("BUDGET_1_2026-10_OVER"), eq(7L), eq(1L),
                 eq("BUDGET_ALERT"), eq("/pages/budget/budget"), data.capture());
         Map<?, ?> payload = data.getValue();
         assertEquals(Map.of("value", "0"), payload.get("amount3"));

@@ -78,7 +78,7 @@ class ReimbursementServiceTest {
         assertEquals(new BigDecimal("120.50"), result.expectedAmount());
         assertEquals("ADVANCE", result.reimbursementType());
         assertEquals("PENDING", result.status());
-        verify(bookAccessService).requireWritable(7L, 1L);
+        verify(bookAccessService).requireAction(7L, 1L, com.lhj.jizhang.user.model.BookAction.REIMBURSEMENTS_MANAGE);
         verify(transactionMapper, never()).selectById(any());
         verify(reimbursementMapper).insert(any(ReimbursementEntity.class));
     }

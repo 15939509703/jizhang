@@ -79,3 +79,58 @@ databaseChangeLog:
             encoding: UTF-8
             splitStatements: true
             stripComments: false
+  - changeSet:
+      id: jizhang-1.3.0-policy-version-add
+      author: jizhang
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: fin_book_member
+                columnName: policy_version
+      changes:
+        - sql:
+            sql: >-
+              ALTER TABLE `fin_book_member`
+              ADD COLUMN `policy_version` BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '成员策略乐观锁版本'
+  - changeSet:
+      id: jizhang-1.3.0-member-access-policy
+      author: jizhang
+      changes:
+        - sqlFile:
+            path: 009-member-access-policy.sql
+            relativeToChangelogFile: true
+            encoding: UTF-8
+            splitStatements: true
+            stripComments: false
+  - changeSet:
+      id: jizhang-1.3.0-legacy-policy-backfill
+      author: jizhang
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: fin_book_member
+            columnName: access_policy
+      changes:
+        - sql:
+            sql: >-
+              UPDATE `fin_book_member`
+              SET `menu_permissions` = CAST('{"MENU.BILLS":false,"MENU.REPORTS":false,"MENU.CONSUMPTION_REPORT":false,"MENU.BUDGET":false,"MENU.ACCOUNTS":false,"MENU.ASSETS":false,"MENU.CATEGORIES":false,"MENU.RECURRING":false,"MENU.LOANS":false,"MENU.REIMBURSEMENTS":false,"MENU.SAVINGS_GOALS":false,"MENU.DATA_SECURITY":false,"MENU.FAMILY_SHARING":false,"MENU.NOTIFICATIONS":false}' AS JSON),
+                  `transaction_scope` = 'ALL'
+              WHERE `access_policy` IS NOT NULL AND `role` <> 'OWNER'
+                AND `menu_permissions` IS NULL AND `transaction_scope` IS NULL
+  - changeSet:
+      id: jizhang-1.3.0-default-policy-backfill
+      author: jizhang
+      changes:
+        - sql:
+            sql: >-
+              UPDATE `fin_book_member`
+              SET `menu_permissions` = CAST('{"MENU.BILLS":true,"MENU.REPORTS":true,"MENU.CONSUMPTION_REPORT":true,"MENU.BUDGET":true,"MENU.ACCOUNTS":true,"MENU.ASSETS":true,"MENU.CATEGORIES":true,"MENU.RECURRING":true,"MENU.LOANS":true,"MENU.REIMBURSEMENTS":true,"MENU.SAVINGS_GOALS":true,"MENU.DATA_SECURITY":true,"MENU.FAMILY_SHARING":true,"MENU.NOTIFICATIONS":true}' AS JSON),
+                  `transaction_scope` = 'ALL'
+              WHERE `menu_permissions` IS NULL AND `transaction_scope` IS NULL
+        - sql:
+            sql: >-
+              UPDATE `fin_book_invitation`
+              SET `status` = 'REVOKED', `modifier` = 'system'
+              WHERE `status` = 'ACTIVE'

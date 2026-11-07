@@ -26,6 +26,9 @@ import com.lhj.jizhang.user.entity.ReimbursementEntity;
 import com.lhj.jizhang.user.entity.SavingsContributionEntity;
 import com.lhj.jizhang.user.entity.SavingsGoalEntity;
 import com.lhj.jizhang.user.model.BookPermission;
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.TransactionScope;
+import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -128,12 +131,15 @@ public class TransactionService {
             Long cursorId,
             Integer limit
     ) {
-        bookAccessService.requireMember(userId, bookId);
+        TransactionScope scope = bookAccessService.requireTransactionScope(userId, bookId);
         int pageSize = validateQuery(type, status, sortBy, limit);
         validateAmountRange(minAmount, maxAmount);
         var query = Wrappers.<TransactionEntity>lambdaQuery()
                 .eq(TransactionEntity::getBookId, bookId)
                 .last("LIMIT " + (pageSize + 1));
+        if (scope == TransactionScope.OWN_CREATED) {
+            query.eq(TransactionEntity::getCreatedUserId, userId);
+        }
         if ("AMOUNT_DESC".equals(sortBy)) {
             query.orderByDesc(TransactionEntity::getAmount, TransactionEntity::getId);
         } else {
@@ -177,9 +183,10 @@ public class TransactionService {
         List<TransactionEntity> rows = transactionMapper.selectList(query);
         boolean hasMore = rows.size() > pageSize;
         List<TransactionEntity> page = hasMore ? rows.subList(0, pageSize) : rows;
-        Map<Long, List<AccountEntryEntity>> entries = loadEntries(page.stream().map(TransactionEntity::getId).toList());
+        Map<Long, List<AccountEntryEntity>> entries = scope == TransactionScope.ALL
+                ? loadEntries(page.stream().map(TransactionEntity::getId).toList()) : Map.of();
         List<TransactionOutDTO> items = page.stream()
-                .map(transaction -> toOutput(transaction, entries.get(transaction.getId())))
+                .map(transaction -> toVisibleOutput(transaction, entries.get(transaction.getId()), scope))
                 .toList();
         Long nextCursor = hasMore && !page.isEmpty() ? page.getLast().getId() : null;
         return new TransactionPageOutDTO(items, nextCursor, hasMore);
@@ -190,8 +197,13 @@ public class TransactionService {
         if (transaction == null) {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "账单不存在");
         }
-        bookAccessService.requireMember(userId, transaction.getBookId());
-        return toOutput(transaction, loadEntries(List.of(transactionId)).get(transactionId));
+        TransactionScope scope = bookAccessService.requireTransactionScope(userId, transaction.getBookId());
+        if (scope == TransactionScope.OWN_CREATED && !userId.equals(transaction.getCreatedUserId())) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "账单不存在", HttpStatus.NOT_FOUND);
+        }
+        List<AccountEntryEntity> entries = scope == TransactionScope.ALL
+                ? loadEntries(List.of(transactionId)).get(transactionId) : List.of();
+        return toVisibleOutput(transaction, entries, scope);
     }
 
     @Transactional
@@ -231,6 +243,7 @@ public class TransactionService {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "账单不存在");
         }
         bookAccessService.requireWritable(userId, transaction.getBookId());
+        bookAccessService.requireAction(userId, transaction.getBookId(), BookAction.BILLS_VOID);
         bookAccessService.requirePermission(userId, transaction.getBookId(),
                 userId.equals(transaction.getCreatedUserId())
                         ? BookPermission.EDIT_OWN_TRANSACTIONS : BookPermission.EDIT_ALL_TRANSACTIONS);
@@ -553,6 +566,19 @@ public class TransactionService {
                 transaction.getCurrencyCode(),
                 transaction.getHappenedAt().toInstant(ZoneOffset.UTC), transaction.getTitle(), transaction.getNote(),
                 transaction.getStatus(), transaction.getVersion(), entryOutputs, List.of());
+    }
+
+    /** 受限成员仅能读取本人账单的非余额字段，且不暴露其他账单引用。 */
+    private TransactionOutDTO toVisibleOutput(TransactionEntity transaction, List<AccountEntryEntity> entries,
+                                              TransactionScope scope) {
+        TransactionOutDTO output = toOutput(transaction, entries);
+        if (scope == TransactionScope.ALL) {
+            return output;
+        }
+        return new TransactionOutDTO(output.id(), output.transactionNo(), output.requestId(), output.bookId(),
+                output.createdUserId(), output.transactionType(), output.categoryId(), null, output.amount(),
+                output.currencyCode(), output.happenedAt(), output.title(), output.note(), output.status(),
+                output.version(), List.of(), output.attachments());
     }
 
     private LocalDateTime toUtc(Instant instant) {

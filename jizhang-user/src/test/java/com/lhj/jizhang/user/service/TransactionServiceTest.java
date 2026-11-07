@@ -1,6 +1,10 @@
 package com.lhj.jizhang.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.apache.ibatis.session.Configuration;
 import com.lhj.jizhang.user.dto.TransactionCreateInDTO;
 import com.lhj.jizhang.user.dto.TransactionOutDTO;
 import com.lhj.jizhang.user.dto.TransactionUpdateInDTO;
@@ -14,6 +18,10 @@ import com.lhj.jizhang.user.mapper.AccountMapper;
 import com.lhj.jizhang.user.mapper.BookMapper;
 import com.lhj.jizhang.user.mapper.CategoryMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
+import com.lhj.jizhang.user.model.TransactionScope;
+import com.lhj.jizhang.common.exception.BusinessException;
+import org.springframework.http.HttpStatus;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +35,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
@@ -157,6 +168,61 @@ class TransactionServiceTest {
         assertEquals(new BigDecimal("90.00"), newAccount.getCurrentBalance());
         assertEquals(1, result.entries().size());
         assertEquals(new BigDecimal("40.00"), result.entries().getFirst().signedAmount());
+    }
+
+    /** 校验分页 SQL 在 LIMIT 前过滤创建人，且响应不包含余额和跨账单引用。 */
+    @Test
+    void shouldFilterOwnCreatedBeforePagingAndRedactEntries() {
+        Configuration configuration = new Configuration();
+        configuration.setMapUnderscoreToCamelCase(true);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, "test"), TransactionEntity.class);
+        when(bookAccessService.requireTransactionScope(7L, 1L)).thenReturn(TransactionScope.OWN_CREATED);
+        TransactionEntity own = effectiveTransaction();
+        own.setOriginalTransactionId(99L);
+        when(transactionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(own));
+
+        var result = service.list(7L, 1L, null, null, null, null, null, null, null,
+                null, null, null, null, 1);
+
+        ArgumentCaptor<Wrapper<TransactionEntity>> query = ArgumentCaptor.forClass(Wrapper.class);
+        verify(transactionMapper).selectList(query.capture());
+        assertTrue(query.getValue().getSqlSegment().contains("created_user_id"));
+        assertTrue(query.getValue().getSqlSegment().contains("LIMIT 2"));
+        assertEquals(7L, ((AbstractWrapper<?, ?, ?>) query.getValue()).getParamNameValuePairs().values().stream()
+                .filter(value -> value.equals(7L)).findFirst().orElseThrow());
+        assertTrue(result.items().getFirst().entries().isEmpty());
+        assertNull(result.items().getFirst().originalTransactionId());
+        verify(accountEntryMapper, never()).selectList(any(Wrapper.class));
+    }
+
+    /** 不可见账单与不存在账单对受限成员均返回未找到。 */
+    @Test
+    void shouldHideOtherMembersTransactionDetail() {
+        TransactionEntity other = effectiveTransaction();
+        other.setCreatedUserId(8L);
+        when(transactionMapper.selectById(100L)).thenReturn(other);
+        when(bookAccessService.requireTransactionScope(7L, 1L)).thenReturn(TransactionScope.OWN_CREATED);
+
+        BusinessException exception = assertThrows(BusinessException.class, () -> service.get(7L, 100L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatus());
+        verify(accountEntryMapper, never()).selectList(any(Wrapper.class));
+    }
+
+    /** 本人账单详情可见，但不查询或返回账户余额分录。 */
+    @Test
+    void shouldReadOwnDetailWithoutBalanceEntries() {
+        TransactionEntity own = effectiveTransaction();
+        own.setOriginalTransactionId(99L);
+        when(transactionMapper.selectById(100L)).thenReturn(own);
+        when(bookAccessService.requireTransactionScope(7L, 1L)).thenReturn(TransactionScope.OWN_CREATED);
+
+        TransactionOutDTO result = service.get(7L, 100L);
+
+        assertEquals(100L, result.id());
+        assertNull(result.originalTransactionId());
+        assertTrue(result.entries().isEmpty());
+        verify(accountEntryMapper, never()).selectList(any(Wrapper.class));
     }
 
     private List<AccountEntryEntity> captureInsertedEntries() {

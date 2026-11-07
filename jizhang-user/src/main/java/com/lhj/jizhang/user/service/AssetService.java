@@ -1,5 +1,7 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookMenu;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -42,7 +44,7 @@ public class AssetService {
     }
 
     public AssetSummaryOutDTO summary(Long userId, Long bookId) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.ASSETS);
         BookEntity book = requireBook(bookId);
         List<AccountEntity> accounts = currentAccounts(bookId);
         BigDecimal totalAssets = accounts.stream().filter(account -> "ASSET".equals(account.getAccountNature()))
@@ -60,7 +62,7 @@ public class AssetService {
     }
 
     public AssetTrendOutDTO trend(Long userId, Long bookId, Integer months) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.ASSETS);
         BookEntity book = requireBook(bookId);
         int count = months == null ? 6 : months;
         if (count < 1 || count > 24) {

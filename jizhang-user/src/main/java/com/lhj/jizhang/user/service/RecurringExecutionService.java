@@ -1,5 +1,8 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.BookMenu;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -64,7 +67,7 @@ public class RecurringExecutionService {
     }
 
     public List<RecurringExecutionOutDTO> list(Long userId, Long bookId, String status, Integer limit) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.RECURRING);
         int pageSize = limit == null ? 50 : limit;
         if (pageSize < 1 || pageSize > 100 || status != null && !EXECUTION_STATUSES.contains(status)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "执行记录查询参数不正确");
@@ -88,7 +91,7 @@ public class RecurringExecutionService {
     }
 
     public long pendingCount(Long userId, Long bookId) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.RECURRING);
         List<Long> ruleIds = ruleMapper.selectList(Wrappers.<RecurringRuleEntity>lambdaQuery()
                         .select(RecurringRuleEntity::getId)
                         .eq(RecurringRuleEntity::getBookId, bookId)
@@ -108,7 +111,7 @@ public class RecurringExecutionService {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "周期执行记录不存在");
         }
         RecurringRuleEntity rule = ruleService.requireRule(execution.getRuleId());
-        bookAccessService.requireMember(userId, rule.getBookId());
+        bookAccessService.requireMenu(userId, rule.getBookId(), BookMenu.RECURRING);
         return ruleService.toExecution(execution, rule);
     }
 
@@ -118,6 +121,7 @@ public class RecurringExecutionService {
         if (!canProcess(rule, scheduledDate)) {
             return null;
         }
+        bookAccessService.requireAction(rule.getCreatedUserId(), rule.getBookId(), BookAction.RECURRING_MANAGE);
         RecurringExecutionEntity execution = createExecution(rule, scheduledDate);
         if (execution == null) {
             advance(rule, scheduledDate);
@@ -136,7 +140,7 @@ public class RecurringExecutionService {
     public RecurringExecutionOutDTO executeNow(Long userId, Long ruleId) {
         RecurringRuleEntity rule = ruleMapper.selectByIdForUpdate(ruleId);
         requireAvailableRule(rule);
-        bookAccessService.requireWritable(userId, rule.getBookId());
+        bookAccessService.requireAction(userId, rule.getBookId(), BookAction.RECURRING_MANAGE);
         if (!"ACTIVE".equals(rule.getStatus()) || rule.getNextExecutionDate() == null) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "当前规则不可立即执行");
         }
@@ -147,7 +151,7 @@ public class RecurringExecutionService {
     public RecurringExecutionOutDTO confirm(Long userId, Long executionId, RecurringConfirmInDTO input) {
         RecurringExecutionEntity execution = requireExecutionForUpdate(executionId);
         RecurringRuleEntity rule = ruleService.requireRule(execution.getRuleId());
-        bookAccessService.requireWritable(userId, rule.getBookId());
+        bookAccessService.requireAction(userId, rule.getBookId(), BookAction.RECURRING_CONFIRM);
         if (!"PENDING".equals(execution.getExecutionStatus())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "当前执行项不允许确认");
         }
@@ -163,7 +167,7 @@ public class RecurringExecutionService {
     public RecurringExecutionOutDTO skip(Long userId, Long executionId) {
         RecurringExecutionEntity execution = requireExecutionForUpdate(executionId);
         RecurringRuleEntity rule = ruleService.requireRule(execution.getRuleId());
-        bookAccessService.requireWritable(userId, rule.getBookId());
+        bookAccessService.requireAction(userId, rule.getBookId(), BookAction.RECURRING_CONFIRM);
         if (!"PENDING".equals(execution.getExecutionStatus())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "当前执行项不允许跳过");
         }
@@ -179,7 +183,7 @@ public class RecurringExecutionService {
     public RecurringExecutionOutDTO retry(Long userId, Long executionId) {
         RecurringExecutionEntity execution = requireExecutionForUpdate(executionId);
         RecurringRuleEntity rule = ruleService.requireRule(execution.getRuleId());
-        bookAccessService.requireWritable(userId, rule.getBookId());
+        bookAccessService.requireAction(userId, rule.getBookId(), BookAction.RECURRING_CONFIRM);
         if (!"FAILED".equals(execution.getExecutionStatus())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "仅失败执行项可以重试");
         }
@@ -232,7 +236,7 @@ public class RecurringExecutionService {
         if (executionMapper.insertIgnore(execution) != 1) return null;
         if ("PENDING".equals(execution.getExecutionStatus()) && subscriptionService != null) {
             BookEntity book = bookMapper.selectById(rule.getBookId());
-            subscriptionService.enqueue("RECUR_PENDING_" + execution.getId(), rule.getCreatedUserId(),
+            subscriptionService.enqueue("RECUR_PENDING_" + execution.getId(), rule.getCreatedUserId(), rule.getBookId(),
                     "RECURRING_PENDING", "/pages/recurring-confirm/recurring-confirm?id=" + execution.getId(),
                     Map.of("thing1", Map.of("value", crop(book.getName(), 20)),
                             "thing2", Map.of("value", crop(rule.getTitle(), 20)),

@@ -55,7 +55,7 @@ class AssetServiceTest {
 
         AssetSummaryOutDTO result = service.summary(7L, 1L);
 
-        verify(bookAccessService).requireMember(7L, 1L);
+        verify(bookAccessService).requireMenu(7L, 1L, com.lhj.jizhang.user.model.BookMenu.ASSETS);
         assertEquals(new BigDecimal("900.00"), result.totalAssets());
         assertEquals(new BigDecimal("1500.00"), result.totalCreditLimit());
         assertEquals(new BigDecimal("300.00"), result.totalLiabilities());

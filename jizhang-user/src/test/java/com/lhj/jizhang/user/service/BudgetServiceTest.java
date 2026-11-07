@@ -70,7 +70,7 @@ class BudgetServiceTest {
 
         BudgetOutDTO result = service.getBudget(7L, 1L, YearMonth.of(2026, 7));
 
-        verify(bookAccessService).requireMember(7L, 1L);
+        verify(bookAccessService).requireMenu(7L, 1L, com.lhj.jizhang.user.model.BookMenu.BUDGET);
         assertEquals(new BigDecimal("5000.00"), result.totalLimit());
         assertEquals(new BigDecimal("45.00"), result.usedAmount());
         assertEquals(1, result.usagePercent());
@@ -139,7 +139,7 @@ class BudgetServiceTest {
 
         BudgetOutDTO result = service.saveBudget(7L, input);
 
-        verify(bookAccessService).requireWritable(7L, 1L);
+        verify(bookAccessService).requireAction(7L, 1L, com.lhj.jizhang.user.model.BookAction.BUDGET_MANAGE);
         verify(budgetMapper).insert(any(BudgetEntity.class));
         verify(budgetItemMapper).insert(any(BudgetItemEntity.class));
         assertEquals(9L, result.id());

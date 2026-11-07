@@ -1,5 +1,8 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.BookMenu;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -28,7 +31,7 @@ public class CategoryService {
     }
 
     public List<CategoryOutDTO> list(Long userId, Long bookId, String type, boolean includeHidden) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.CATEGORIES);
         validateType(type);
         var query = Wrappers.<CategoryEntity>lambdaQuery()
                 .eq(CategoryEntity::getBookId, bookId)
@@ -45,7 +48,7 @@ public class CategoryService {
 
     @Transactional
     public CategoryOutDTO create(Long userId, CategoryCreateInDTO input) {
-        bookAccessService.requireWritable(userId, input.bookId());
+        bookAccessService.requireAction(userId, input.bookId(), BookAction.CATEGORIES_MANAGE);
         CategoryEntity category = new CategoryEntity();
         category.setCategoryNo(BusinessIdGenerator.next("CAT_"));
         category.setScopeType("BOOK");
@@ -65,7 +68,7 @@ public class CategoryService {
     @Transactional
     public CategoryOutDTO update(Long userId, Long categoryId, CategoryUpdateInDTO input) {
         CategoryEntity category = requireCategory(categoryId);
-        bookAccessService.requireWritable(userId, category.getBookId());
+        bookAccessService.requireAction(userId, category.getBookId(), BookAction.CATEGORIES_MANAGE);
         applyDisplay(category, input.name(), input.icon(), input.color());
         category.setModifier(String.valueOf(userId));
         categoryMapper.updateById(category);
@@ -75,7 +78,7 @@ public class CategoryService {
     @Transactional
     public CategoryOutDTO setHidden(Long userId, Long categoryId, boolean hidden) {
         CategoryEntity category = requireCategory(categoryId);
-        bookAccessService.requireWritable(userId, category.getBookId());
+        bookAccessService.requireAction(userId, category.getBookId(), BookAction.CATEGORIES_MANAGE);
         category.setHiddenFlag(hidden ? 1 : 0);
         category.setModifier(String.valueOf(userId));
         categoryMapper.updateById(category);
@@ -84,7 +87,7 @@ public class CategoryService {
 
     @Transactional
     public void sort(Long userId, CategorySortInDTO input) {
-        bookAccessService.requireWritable(userId, input.bookId());
+        bookAccessService.requireAction(userId, input.bookId(), BookAction.CATEGORIES_MANAGE);
         for (var item : input.items()) {
             CategoryEntity category = requireCategory(item.categoryId());
             if (!input.bookId().equals(category.getBookId())) {
@@ -99,7 +102,7 @@ public class CategoryService {
     @Transactional
     public void delete(Long userId, Long categoryId) {
         CategoryEntity category = requireCategory(categoryId);
-        bookAccessService.requireWritable(userId, category.getBookId());
+        bookAccessService.requireAction(userId, category.getBookId(), BookAction.CATEGORIES_MANAGE);
         category.setDeletedFlag(1);
         category.setModifier(String.valueOf(userId));
         categoryMapper.updateById(category);

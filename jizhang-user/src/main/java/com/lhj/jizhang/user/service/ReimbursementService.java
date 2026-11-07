@@ -1,5 +1,9 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.BookMenu;
+import com.lhj.jizhang.user.model.BookPermission;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -45,7 +49,7 @@ public class ReimbursementService {
     }
 
     public List<ReimbursementOutDTO> list(Long userId, Long bookId, String status) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.REIMBURSEMENTS);
         if (status != null && !STATUSES.contains(status)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "报销状态不正确");
         }
@@ -74,7 +78,8 @@ public class ReimbursementService {
                 || !"EFFECTIVE".equals(expense.getStatus())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "只有有效支出可以设为待报销");
         }
-        bookAccessService.requireWritable(userId, expense.getBookId());
+        bookAccessService.requireAction(userId, expense.getBookId(), BookAction.REIMBURSEMENTS_MANAGE);
+        bookAccessService.requirePermission(userId, expense.getBookId(), BookPermission.VIEW_TRANSACTIONS);
         ReimbursementEntity existing = reimbursementMapper.selectOne(Wrappers.<ReimbursementEntity>lambdaQuery()
                 .eq(ReimbursementEntity::getExpenseTransactionId, expense.getId()));
         if (existing != null) {
@@ -93,7 +98,7 @@ public class ReimbursementService {
 
     private ReimbursementOutDTO createManual(Long userId, ReimbursementCreateInDTO input) {
         validateManualInput(input.bookId(), input.expectedAmount());
-        bookAccessService.requireWritable(userId, input.bookId());
+        bookAccessService.requireAction(userId, input.bookId(), BookAction.REIMBURSEMENTS_MANAGE);
         ReimbursementEntity entity = buildEntity(userId, input, input.bookId(), null, input.expectedAmount());
         reimbursementMapper.insert(entity);
         return toOutput(entity);
@@ -104,13 +109,14 @@ public class ReimbursementService {
         if (entity == null) {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "报销项目不存在");
         }
-        bookAccessService.requireMember(userId, entity.getBookId());
+        bookAccessService.requireMenu(userId, entity.getBookId(), BookMenu.REIMBURSEMENTS);
         return toOutput(entity);
     }
 
     @Transactional
     public ReimbursementOutDTO update(Long userId, Long id, ReimbursementUpdateInDTO input) {
         ReimbursementEntity entity = requireLocked(userId, id);
+        bookAccessService.requireAction(userId, entity.getBookId(), BookAction.REIMBURSEMENTS_MANAGE);
         if (!"PENDING".equals(entity.getStatus())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "只有待报销项目可以编辑");
         }
@@ -130,6 +136,7 @@ public class ReimbursementService {
     @Transactional
     public void delete(Long userId, Long id) {
         ReimbursementEntity entity = requireLocked(userId, id);
+        bookAccessService.requireAction(userId, entity.getBookId(), BookAction.REIMBURSEMENTS_MANAGE);
         if ("REIMBURSED".equals(entity.getStatus()) || entity.getReimbursementTransactionId() != null) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "请先作废报销到账账单");
         }
@@ -139,6 +146,7 @@ public class ReimbursementService {
     @Transactional
     public ReimbursementOutDTO receive(Long userId, Long id, ReimbursementReceiveInDTO input) {
         ReimbursementEntity entity = requireLocked(userId, id);
+        bookAccessService.requireAction(userId, entity.getBookId(), BookAction.REIMBURSEMENTS_RECEIVE);
         if ("REIMBURSED".equals(entity.getStatus())) return toOutput(entity);
         if (!"PENDING".equals(entity.getStatus())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "当前报销项目不能确认到账");
@@ -159,6 +167,7 @@ public class ReimbursementService {
     @Transactional
     public ReimbursementOutDTO cancel(Long userId, Long id) {
         ReimbursementEntity entity = requireLocked(userId, id);
+        bookAccessService.requireAction(userId, entity.getBookId(), BookAction.REIMBURSEMENTS_MANAGE);
         if ("REIMBURSED".equals(entity.getStatus())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "请先作废报销到账账单");
         }
@@ -176,7 +185,7 @@ public class ReimbursementService {
         if (entity == null) {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "报销项目不存在");
         }
-        bookAccessService.requireWritable(userId, entity.getBookId());
+        bookAccessService.requireMenu(userId, entity.getBookId(), BookMenu.REIMBURSEMENTS);
         return entity;
     }
 

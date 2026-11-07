@@ -60,7 +60,7 @@ class ExportServiceTest {
             assertEquals("10.00", sheet.getRow(1).getCell(5).getStringCellValue());
             assertEquals("", sheet.getRow(1).getCell(7).getStringCellValue());
         }
-        verify(bookAccessService).requirePermission(7L, 1L, BookPermission.EXPORT_DATA);
+        verify(bookAccessService).requireLedgerFileAccess(7L, 1L);
     }
 
     private ExportTaskEntity exportTask() {

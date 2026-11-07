@@ -1,6 +1,7 @@
 .idea/
 *.iml
 **/target/
+**/target.nosync/
 .DS_Store
 
 # Local secrets and environment overrides

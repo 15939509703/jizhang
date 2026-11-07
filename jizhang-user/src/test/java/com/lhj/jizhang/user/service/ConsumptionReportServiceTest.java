@@ -56,7 +56,7 @@ class ConsumptionReportServiceTest {
 
         ConsumptionReportOutDTO report = service.get(7L, 1L, YearMonth.of(2026, 1));
 
-        verify(accessService).requireMember(7L, 1L);
+        verify(accessService).requireMenu(7L, 1L, com.lhj.jizhang.user.model.BookMenu.CONSUMPTION_REPORT);
         assertEquals(3, report.categoryComparisons().size());
         assertEquals("餐饮", report.categoryComparisons().get(0).categoryName());
         assertEquals(new BigDecimal("100.00"), report.categoryComparisons().get(0).monthOverMonth().changeAmount());

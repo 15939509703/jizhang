@@ -1,5 +1,8 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookMenu;
+import com.lhj.jizhang.user.model.BookPermission;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -13,8 +16,6 @@ import com.lhj.jizhang.user.mapper.UserMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -34,7 +35,7 @@ public class BookMemberService {
     }
 
     public List<BookMemberOutDTO> list(Long userId, Long bookId) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.FAMILY_SHARING);
         List<BookMemberEntity> members = bookMemberMapper.selectList(Wrappers.<BookMemberEntity>lambdaQuery()
                 .eq(BookMemberEntity::getBookId, bookId)
                 .eq(BookMemberEntity::getStatus, 1)
@@ -46,46 +47,29 @@ public class BookMemberService {
 
     @Transactional
     public BookMemberOutDTO invite(Long actorId, Long bookId, BookMemberInviteInDTO input) {
-        BookMemberEntity actor = bookAccessService.requireAdmin(actorId, bookId);
-        UserEntity user = findUser(input.userNo());
-        BookMemberEntity member = findMembership(bookId, user.getId());
-        validateManagedRole(actor, input.role(), member);
-        if (member == null) {
-            member = buildMember(bookId, user.getId(), actorId, input.role());
-            bookMemberMapper.insert(member);
-        } else {
-            if ("OWNER".equals(member.getRole())) {
-                throw new BusinessException(ErrorCodes.MEMBER_INVALID, "账本所有者不能被重复邀请");
-            }
-            member.setRole(input.role());
-            member.setStatus(1);
-            member.setInvitedBy(actorId);
-            member.setJoinedTime(LocalDateTime.now(ZoneOffset.UTC));
-            member.setModifier(String.valueOf(actorId));
-            bookMemberMapper.updateById(member);
-        }
-        return toOutput(member, user);
+        bookAccessService.requireAdmin(actorId, bookId);
+        bookAccessService.requirePermission(actorId, bookId, BookPermission.MANAGE_MEMBERS);
+        throw upgradeRequired();
     }
 
     @Transactional
     public BookMemberOutDTO updateRole(Long actorId, Long bookId, Long memberId, BookMemberRoleInDTO input) {
-        BookMemberEntity actor = bookAccessService.requireAdmin(actorId, bookId);
-        BookMemberEntity member = requireManagedMember(bookId, memberId);
-        validateManagedRole(actor, input.role(), member);
-        member.setRole(input.role());
-        member.setModifier(String.valueOf(actorId));
-        bookMemberMapper.updateById(member);
-        return toOutput(member, userMapper.selectById(member.getUserId()));
+        bookAccessService.requireAdmin(actorId, bookId);
+        bookAccessService.requirePermission(actorId, bookId, BookPermission.MANAGE_MEMBERS);
+        throw upgradeRequired();
     }
 
     @Transactional
     public void remove(Long actorId, Long bookId, Long memberId) {
         BookMemberEntity actor = bookAccessService.requireAdmin(actorId, bookId);
+        bookAccessService.requirePermission(actorId, bookId, BookPermission.MANAGE_MEMBERS);
         BookMemberEntity member = requireManagedMember(bookId, memberId);
         validateManagedRole(actor, member.getRole(), member);
-        member.setStatus(0);
-        member.setModifier(String.valueOf(actorId));
-        bookMemberMapper.updateById(member);
+        if (bookMemberMapper.deactivate(memberId, bookId, member.getPolicyVersion(), actor.getRole(),
+                String.valueOf(actorId)) != 1) {
+            throw new BusinessException(ErrorCodes.MEMBER_POLICY_CONFLICT, "成员状态已变化，请刷新后重试",
+                    org.springframework.http.HttpStatus.CONFLICT);
+        }
     }
 
     private void validateManagedRole(BookMemberEntity actor, String nextRole, BookMemberEntity target) {
@@ -98,39 +82,18 @@ public class BookMemberService {
         }
     }
 
-    private UserEntity findUser(String userNo) {
-        UserEntity user = userMapper.selectOne(Wrappers.<UserEntity>lambdaQuery()
-                .eq(UserEntity::getUserNo, userNo.trim()).eq(UserEntity::getStatus, 1));
-        if (user == null) {
-            throw new BusinessException(ErrorCodes.MEMBER_INVALID, "未找到该用户编号");
-        }
-        return user;
-    }
-
-    private BookMemberEntity findMembership(Long bookId, Long userId) {
-        return bookMemberMapper.selectOne(Wrappers.<BookMemberEntity>lambdaQuery()
-                .eq(BookMemberEntity::getBookId, bookId).eq(BookMemberEntity::getUserId, userId));
-    }
-
     private BookMemberEntity requireManagedMember(Long bookId, Long memberId) {
         BookMemberEntity member = bookMemberMapper.selectById(memberId);
-        if (member == null || !bookId.equals(member.getBookId()) || member.getStatus() != 1) {
+        if (member == null || !bookId.equals(member.getBookId()) || !Integer.valueOf(1).equals(member.getStatus())) {
             throw new BusinessException(ErrorCodes.MEMBER_INVALID, "成员不存在或已退出");
         }
         return member;
     }
 
-    private BookMemberEntity buildMember(Long bookId, Long userId, Long actorId, String role) {
-        BookMemberEntity member = new BookMemberEntity();
-        member.setBookId(bookId);
-        member.setUserId(userId);
-        member.setRole(role);
-        member.setStatus(1);
-        member.setInvitedBy(actorId);
-        member.setJoinedTime(LocalDateTime.now(ZoneOffset.UTC));
-        member.setCreator(String.valueOf(actorId));
-        member.setModifier(String.valueOf(actorId));
-        return member;
+    /** 引导旧写入口升级，避免创建缺失策略的成员。 */
+    private BusinessException upgradeRequired() {
+        return new BusinessException(ErrorCodes.MEMBER_POLICY_UPGRADE_REQUIRED, "请升级客户端并使用完整权限配置",
+                org.springframework.http.HttpStatus.CONFLICT);
     }
 
     private BookMemberOutDTO toOutput(BookMemberEntity member, UserEntity user) {

@@ -16,6 +16,12 @@ public class BookInvitationEntity {
     private Long bookId;
     private Long inviterUserId;
     private String defaultRole;
+    /** 邀请创建时冻结的菜单权限。 */
+    private String menuPermissions;
+    /** 邀请创建时冻结的操作权限。 */
+    private String actionPermissions;
+    /** 邀请创建时冻结的账单范围。 */
+    private String transactionScope;
     private String tokenHash;
     private LocalDateTime expiredTime;
     private String status;

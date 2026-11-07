@@ -11,6 +11,7 @@ import com.lhj.jizhang.user.mapper.BookMapper;
 import com.lhj.jizhang.user.mapper.RecurringExecutionMapper;
 import com.lhj.jizhang.user.mapper.RecurringRuleMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
+import com.lhj.jizhang.user.model.TransactionScope;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,7 +27,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,7 +56,8 @@ class TransactionCalendarServiceTest {
     @Test
     void shouldAggregateByBookTimezoneAndExposeUtcDayBoundaries() {
         when(bookMapper.selectById(1L)).thenReturn(book());
-        when(transactionMapper.selectStatisticsTransactions(any(), any(), any())).thenReturn(List.of(
+        when(bookAccessService.requireTransactionScope(7L, 1L)).thenReturn(TransactionScope.ALL);
+        when(transactionMapper.selectStatisticsTransactions(any(), any(), any(), nullable(Long.class))).thenReturn(List.of(
                 transaction("INCOME", "20.00", LocalDateTime.of(2026, 7, 1, 15, 59)),
                 transaction("EXPENSE", "7.50", LocalDateTime.of(2026, 7, 1, 16, 0))));
         RecurringRuleEntity rule = new RecurringRuleEntity();
@@ -65,7 +69,7 @@ class TransactionCalendarServiceTest {
 
         TransactionCalendarOutDTO result = service.get(7L, 1L, YearMonth.of(2026, 7));
 
-        verify(bookAccessService).requireMember(7L, 1L);
+        verify(bookAccessService).requireTransactionScope(7L, 1L);
         assertEquals(31, result.days().size());
         assertEquals(LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")), result.today());
         assertEquals(new BigDecimal("20.00"), result.incomeAmount());
@@ -77,6 +81,23 @@ class TransactionCalendarServiceTest {
         assertEquals(Instant.parse("2026-07-01T16:00:00Z"), first.endAt());
         assertEquals(new BigDecimal("7.50"), second.expenseAmount());
         assertEquals(1, second.pendingRecurringCount());
+    }
+
+    /** 校验受限日历先按创建人过滤且不混入全账本周期待确认项。 */
+    @Test
+    void shouldHideOtherMembersRecurringItemsForRestrictedMember() {
+        when(bookAccessService.requireTransactionScope(7L, 1L)).thenReturn(TransactionScope.OWN_CREATED);
+        when(bookMapper.selectById(1L)).thenReturn(book());
+        LocalDateTime startAt = LocalDateTime.of(2026, 6, 30, 16, 0);
+        LocalDateTime endAt = LocalDateTime.of(2026, 7, 31, 16, 0);
+        when(transactionMapper.selectStatisticsTransactions(1L, startAt, endAt, 7L))
+                .thenReturn(List.of(transaction("EXPENSE", "7.50", LocalDateTime.of(2026, 7, 1, 16, 0))));
+
+        TransactionCalendarOutDTO result = service.get(7L, 1L, YearMonth.of(2026, 7));
+
+        assertEquals(new BigDecimal("7.50"), result.expenseAmount());
+        assertEquals(0, result.days().get(1).pendingRecurringCount());
+        verify(ruleMapper, never()).selectList(any(Wrapper.class));
     }
 
     private BookEntity book() {

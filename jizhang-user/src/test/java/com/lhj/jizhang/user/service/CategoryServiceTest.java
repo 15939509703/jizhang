@@ -36,6 +36,6 @@ class CategoryServiceTest {
         assertEquals(30, result.sortNo());
         assertFalse(result.hidden());
         assertFalse(result.system());
-        verify(bookAccessService).requireWritable(7L, 1L);
+        verify(bookAccessService).requireAction(7L, 1L, com.lhj.jizhang.user.model.BookAction.CATEGORIES_MANAGE);
     }
 }

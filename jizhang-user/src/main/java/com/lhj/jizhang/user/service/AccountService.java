@@ -1,5 +1,8 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.BookMenu;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -51,7 +54,7 @@ public class AccountService {
     }
 
     public List<AccountOutDTO> list(Long userId, Long bookId) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.ACCOUNTS);
         return accountMapper.selectList(Wrappers.<AccountEntity>lambdaQuery()
                         .eq(AccountEntity::getBookId, bookId)
                         .eq(AccountEntity::getDeletedFlag, 0)
@@ -61,13 +64,13 @@ public class AccountService {
 
     public AccountOutDTO get(Long userId, Long accountId) {
         AccountEntity account = requireAccount(accountId);
-        bookAccessService.requireMember(userId, account.getBookId());
+        bookAccessService.requireMenu(userId, account.getBookId(), BookMenu.ACCOUNTS);
         return toOutput(account);
     }
 
     @Transactional
     public AccountOutDTO create(Long userId, AccountCreateInDTO input) {
-        bookAccessService.requireWritable(userId, input.bookId());
+        bookAccessService.requireAction(userId, input.bookId(), BookAction.ACCOUNTS_MANAGE);
         validateInitialBalance(input);
         AccountEntity account = new AccountEntity();
         account.setAccountNo(BusinessIdGenerator.next("ACC_"));
@@ -97,7 +100,7 @@ public class AccountService {
     @Transactional
     public AccountOutDTO update(Long userId, Long accountId, AccountUpdateInDTO input) {
         AccountEntity account = requireAccount(accountId);
-        bookAccessService.requireWritable(userId, account.getBookId());
+        bookAccessService.requireAction(userId, account.getBookId(), BookAction.ACCOUNTS_MANAGE);
         account.setName(input.name().trim());
         if (input.includedInAssets() != null) {
             account.setIncludedInAssets(Boolean.TRUE.equals(input.includedInAssets()) ? 1 : 0);
@@ -110,7 +113,7 @@ public class AccountService {
 
     @Transactional
     public void sort(Long userId, AccountSortInDTO input) {
-        bookAccessService.requireWritable(userId, input.bookId());
+        bookAccessService.requireAction(userId, input.bookId(), BookAction.ACCOUNTS_MANAGE);
         validateSortItems(input);
         for (var item : input.items()) {
             AccountEntity account = requireAccount(item.accountId());
@@ -126,7 +129,7 @@ public class AccountService {
     @Transactional
     public void delete(Long userId, Long accountId) {
         AccountEntity account = requireAccount(accountId);
-        bookAccessService.requireWritable(userId, account.getBookId());
+        bookAccessService.requireAction(userId, account.getBookId(), BookAction.ACCOUNTS_MANAGE);
         account.setDeletedFlag(1);
         account.setStatus(0);
         account.setArchivedTime(LocalDateTime.now(ZoneOffset.UTC));
@@ -140,7 +143,7 @@ public class AccountService {
         if (account == null || account.getDeletedFlag() != 0 || account.getStatus() != 1) {
             throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "账户不存在或不可用");
         }
-        bookAccessService.requireWritable(userId, account.getBookId());
+        bookAccessService.requireAction(userId, account.getBookId(), BookAction.ACCOUNTS_ADJUST);
         TransactionEntity existing = findAdjustment(userId, account.getBookId(), input.requestId());
         if (existing != null) {
             return toOutput(account);
@@ -181,7 +184,7 @@ public class AccountService {
 
     public AccountEntryPageOutDTO entries(Long userId, Long accountId, Long cursorId, Integer limit) {
         AccountEntity account = requireAccount(accountId);
-        bookAccessService.requireMember(userId, account.getBookId());
+        bookAccessService.requireMenu(userId, account.getBookId(), BookMenu.ACCOUNTS);
         int pageSize = limit == null ? 20 : limit;
         if (pageSize < 1 || pageSize > 100) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "每页数量必须在1到100之间");

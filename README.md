@@ -91,6 +91,7 @@ deploy/nginx-jizhang.conf.example
 ## 编译与启动
 
 工程要求使用JDK 21，根目录的`.java-version`和Maven Enforcer会阻止误用其他JDK。
+本机项目位于 iCloud 同步目录时，构建产物统一输出到 `target.nosync`，避免旧 `.class` 文件被同步恢复。修改 Maven 配置后，在 IDEA 中重新加载 Maven 项目，使运行配置使用新的模块输出目录。
 
 本机Maven位于IntelliJ IDEA安装目录：
 

@@ -14,6 +14,7 @@ import com.lhj.jizhang.user.mapper.CategoryMapper;
 import com.lhj.jizhang.user.mapper.DuplicateFindingMapper;
 import com.lhj.jizhang.user.mapper.RestoreCheckMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
+import com.lhj.jizhang.user.model.BookPermission;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -78,6 +79,7 @@ class DataSecurityServiceTest {
         assertEquals("工作餐", result.candidateTransaction().title());
         assertEquals("同事代付", result.candidateTransaction().note());
         assertNull(result.candidateTransaction().categoryName());
-        verify(accessService).requireMember(7L, 1L);
+        verify(accessService).requireMenu(7L, 1L, com.lhj.jizhang.user.model.BookMenu.DATA_SECURITY);
+        verify(accessService).requirePermission(7L, 1L, BookPermission.VIEW_TRANSACTIONS);
     }
 }

@@ -14,6 +14,7 @@ import com.lhj.jizhang.user.mapper.TransactionMapper;
 import com.lhj.jizhang.user.model.ConsumptionInsightAggregate;
 import com.lhj.jizhang.user.model.StatisticsBreakdownAggregate;
 import com.lhj.jizhang.user.model.TransactionSummaryAggregate;
+import com.lhj.jizhang.user.model.BookMenu;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -49,7 +50,7 @@ public class ConsumptionReportService {
     }
 
     public ConsumptionReportOutDTO get(Long userId, Long bookId, YearMonth month) {
-        accessService.requireMember(userId, bookId);
+        accessService.requireMenu(userId, bookId, BookMenu.CONSUMPTION_REPORT);
         BookEntity book = bookMapper.selectById(bookId);
         if (book == null || book.getStatus() == 0) throw new BusinessException(ErrorCodes.BOOK_NOT_FOUND, "账本不存在");
         ZoneId zone = ZoneId.of(book.getTimezone());

@@ -1,5 +1,8 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.BookMenu;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -38,7 +41,7 @@ public class LoanService {
 
     @Transactional
     public LoanOutDTO create(Long userId, LoanCreateInDTO input) {
-        bookAccessService.requireWritable(userId, input.bookId());
+        bookAccessService.requireAction(userId, input.bookId(), BookAction.LOANS_MANAGE);
         LoanRecordEntity loan = new LoanRecordEntity();
         loan.setLoanNo(BusinessIdGenerator.next("LOAN_"));
         loan.setBookId(input.bookId());
@@ -58,7 +61,7 @@ public class LoanService {
     }
 
     public LoanPageOutDTO list(Long userId, Long bookId, String loanType, String status, Long cursorId, Integer limit) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.LOANS);
         int pageSize = validateListInput(loanType, status, limit);
         var query = Wrappers.<LoanRecordEntity>lambdaQuery()
                 .eq(LoanRecordEntity::getBookId, bookId)
@@ -81,7 +84,7 @@ public class LoanService {
     }
 
     public LoanSummaryOutDTO summary(Long userId, Long bookId) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.LOANS);
         List<LoanRecordEntity> rows = loanRecordMapper.selectList(Wrappers.<LoanRecordEntity>lambdaQuery()
                 .eq(LoanRecordEntity::getBookId, bookId)
                 .ne(LoanRecordEntity::getStatus, "CLOSED"));
@@ -104,7 +107,7 @@ public class LoanService {
 
     public LoanOutDTO get(Long userId, Long id) {
         LoanRecordEntity loan = requireLoan(id);
-        bookAccessService.requireMember(userId, loan.getBookId());
+        bookAccessService.requireMenu(userId, loan.getBookId(), BookMenu.LOANS);
         return toOutput(loan);
     }
 
@@ -114,7 +117,7 @@ public class LoanService {
         if (loan == null) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "借还记录不存在");
         }
-        bookAccessService.requireWritable(userId, loan.getBookId());
+        bookAccessService.requireAction(userId, loan.getBookId(), BookAction.LOANS_MANAGE);
         if (!input.version().equals(loan.getVersion())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "借还记录已变化，请刷新后重试");
         }
@@ -132,7 +135,7 @@ public class LoanService {
         if (loan == null) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "借还记录不存在");
         }
-        bookAccessService.requireWritable(userId, loan.getBookId());
+        bookAccessService.requireAction(userId, loan.getBookId(), BookAction.LOANS_REPAY);
         if ("CLOSED".equals(loan.getStatus())) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "已结清记录不能继续还款");
         }
@@ -154,7 +157,7 @@ public class LoanService {
         if (loan == null) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "借还记录不存在");
         }
-        bookAccessService.requireWritable(userId, loan.getBookId());
+        bookAccessService.requireAction(userId, loan.getBookId(), BookAction.LOANS_REMIND);
         if (!"LEND".equals(loan.getLoanType())) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "只有借出记录需要催收");
         }

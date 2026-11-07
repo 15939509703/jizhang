@@ -12,6 +12,8 @@ import com.lhj.jizhang.user.entity.AccountEntity;
 import com.lhj.jizhang.user.entity.AccountEntryEntity;
 import com.lhj.jizhang.user.entity.BookEntity;
 import com.lhj.jizhang.user.entity.BookMemberEntity;
+import com.lhj.jizhang.user.model.BookMenu;
+import com.lhj.jizhang.user.model.BookPermission;
 import com.lhj.jizhang.user.entity.BudgetEntity;
 import com.lhj.jizhang.user.entity.CategoryEntity;
 import com.lhj.jizhang.user.entity.LoanRecordEntity;
@@ -70,6 +72,11 @@ public class SyncService {
 
     public SyncChangesOutDTO changes(Long userId, Long bookId, Instant cursor) {
         BookMemberEntity member = bookAccessService.requireMember(userId, bookId);
+        for (BookMenu menu : List.of(BookMenu.BILLS, BookMenu.CATEGORIES, BookMenu.ACCOUNTS,
+                BookMenu.BUDGET, BookMenu.LOANS)) {
+            bookAccessService.requireMenu(userId, bookId, menu);
+        }
+        bookAccessService.requirePermission(userId, bookId, BookPermission.VIEW_TRANSACTIONS);
         LocalDateTime since = cursor == null ? LocalDateTime.ofInstant(Instant.EPOCH, ZoneOffset.UTC) : toUtc(cursor);
         BookEntity book = bookMapper.selectById(bookId);
         List<CategoryEntity> categories = modifiedCategories(bookId, since);

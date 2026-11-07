@@ -44,7 +44,7 @@ class AccountServiceTest {
                 new AccountCreateInDTO(1L, "工资卡", "BANK", "ASSET", BigDecimal.ZERO, true));
 
         assertEquals(50, result.sortNo());
-        verify(bookAccessService).requireWritable(7L, 1L);
+        verify(bookAccessService).requireAction(7L, 1L, com.lhj.jizhang.user.model.BookAction.ACCOUNTS_MANAGE);
     }
 
     @Test
@@ -69,7 +69,7 @@ class AccountServiceTest {
         AccountOutDTO result = service.update(7L, 20L, new AccountUpdateInDTO("  工资卡  "));
 
         assertEquals("工资卡", result.name());
-        verify(bookAccessService).requireWritable(7L, 1L);
+        verify(bookAccessService).requireAction(7L, 1L, com.lhj.jizhang.user.model.BookAction.ACCOUNTS_MANAGE);
         verify(accountMapper).updateById(account);
     }
 
@@ -84,7 +84,7 @@ class AccountServiceTest {
         service.delete(7L, 20L);
 
         ArgumentCaptor<AccountEntity> captor = ArgumentCaptor.forClass(AccountEntity.class);
-        verify(bookAccessService).requireWritable(7L, 1L);
+        verify(bookAccessService).requireAction(7L, 1L, com.lhj.jizhang.user.model.BookAction.ACCOUNTS_MANAGE);
         verify(accountMapper).updateById(captor.capture());
         assertEquals(1, captor.getValue().getDeletedFlag());
         assertEquals(0, captor.getValue().getStatus());

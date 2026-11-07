@@ -18,6 +18,12 @@ public class BookMemberEntity {
     /** 当前成员对账本所属人的私有备注。 */
     private String remarkName;
     private String permissions;
+    /** 当前账本允许进入的菜单策略 JSON。 */
+    private String menuPermissions;
+    /** 当前账本账单记录的可见范围。 */
+    private String transactionScope;
+    /** 权限整体保存时使用的乐观锁版本。 */
+    private Long policyVersion;
     private Integer status;
     private Long invitedBy;
     private LocalDateTime joinedTime;

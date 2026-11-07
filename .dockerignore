@@ -1,6 +1,7 @@
 .git
 .idea
 **/target
+**/target.nosync
 .DS_Store
 *.log
 *.pid

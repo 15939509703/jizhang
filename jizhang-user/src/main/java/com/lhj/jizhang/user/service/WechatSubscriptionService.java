@@ -15,6 +15,7 @@ import com.lhj.jizhang.user.entity.WechatSubscriptionEntity;
 import com.lhj.jizhang.user.mapper.NotificationOutboxMapper;
 import com.lhj.jizhang.user.mapper.UserAuthMapper;
 import com.lhj.jizhang.user.mapper.WechatSubscriptionMapper;
+import com.lhj.jizhang.user.model.BookMenu;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -37,13 +38,15 @@ public class WechatSubscriptionService {
     private final WechatNotificationClient client;
     private final WechatNotificationProperties properties;
     private final ObjectMapper objectMapper;
+    private final BookAccessService accessService;
 
     public WechatSubscriptionService(WechatSubscriptionMapper subscriptionMapper,
                                      NotificationOutboxMapper outboxMapper, UserAuthMapper authMapper,
                                      WechatNotificationClient client, WechatNotificationProperties properties,
-                                     ObjectMapper objectMapper) {
+                                     ObjectMapper objectMapper, BookAccessService accessService) {
         this.subscriptionMapper = subscriptionMapper; this.outboxMapper = outboxMapper; this.authMapper = authMapper;
         this.client = client; this.properties = properties; this.objectMapper = objectMapper;
+        this.accessService = accessService;
     }
 
     public List<WechatSubscriptionOutDTO> settings(Long userId) {
@@ -67,14 +70,20 @@ public class WechatSubscriptionService {
         return output(entity, input.scene());
     }
 
+    /** 入队时记录账本归属并核对通知内容的当前模块权限。 */
     @Transactional
-    public void enqueue(String eventKey, Long userId, String scene, String pagePath, Map<String, Object> parameters) {
+    public void enqueue(String eventKey, Long userId, Long bookId, String scene,
+                        String pagePath, Map<String, Object> parameters) {
+        if (!hasContentAccess(userId, bookId, scene)) {
+            return;
+        }
         WechatSubscriptionEntity subscription = find(userId, scene);
         String templateId = template(scene);
         if (subscription == null || subscription.getEnabledFlag() == 0 || subscription.getAuthorizedCount() <= 0
                 || !properties.enabled() || templateId == null || templateId.isBlank()) return;
         NotificationOutboxEntity item = new NotificationOutboxEntity();
-        item.setEventKey(eventKey); item.setUserId(userId); item.setScene(scene); item.setTemplateId(templateId);
+        item.setEventKey(eventKey); item.setUserId(userId); item.setBookId(bookId);
+        item.setScene(scene); item.setTemplateId(templateId);
         item.setPagePath(pagePath); item.setStatus("PENDING"); item.setRetryCount(0);
         item.setNextRetryTime(LocalDateTime.now(ZoneOffset.UTC)); item.setExpiredTime(LocalDateTime.now(ZoneOffset.UTC).plusDays(7));
         try { item.setParametersJson(objectMapper.writeValueAsString(parameters)); outboxMapper.insert(item); }
@@ -95,6 +104,9 @@ public class WechatSubscriptionService {
 
     @Transactional
     protected void sendOne(NotificationOutboxEntity item) {
+        if (!hasContentAccess(item.getUserId(), item.getBookId(), item.getScene())) {
+            fail(item, "ACCESS_REVOKED", false); return;
+        }
         WechatSubscriptionEntity subscription = find(item.getUserId(), item.getScene());
         if (subscription == null || subscription.getEnabledFlag() == 0 || subscription.getAuthorizedCount() <= 0) {
             fail(item, "NO_AUTHORIZATION", false); return;
@@ -117,6 +129,21 @@ public class WechatSubscriptionService {
                     item.getId(), item.getScene(), item.getRetryCount() + 1, exception.getClass().getName(),
                     exception.getCause() == null ? "none" : exception.getCause().getClass().getName());
             fail(item, "NETWORK_ERROR", true);
+        }
+    }
+
+    /** 按通知所属账本复核当前可读模块，旧无账本任务不能继续发送。 */
+    private boolean hasContentAccess(Long userId, Long bookId, String scene) {
+        if (bookId == null || !SCENES.contains(scene)) {
+            return false;
+        }
+        try {
+            accessService.requireMenu(userId, bookId, BookMenu.NOTIFICATIONS);
+            accessService.requireMenu(userId, bookId,
+                    "RECURRING_PENDING".equals(scene) ? BookMenu.RECURRING : BookMenu.BUDGET);
+            return true;
+        } catch (BusinessException exception) {
+            return false;
         }
     }
 

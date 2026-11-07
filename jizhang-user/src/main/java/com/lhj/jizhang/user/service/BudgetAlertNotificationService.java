@@ -1,5 +1,7 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.common.exception.BusinessException;
+import com.lhj.jizhang.user.model.BookMenu;
 import com.lhj.jizhang.user.dto.BudgetOutDTO;
 import com.lhj.jizhang.user.entity.BookEntity;
 import com.lhj.jizhang.user.entity.TransactionEntity;
@@ -18,14 +20,23 @@ public class BudgetAlertNotificationService {
     private final BudgetService budgetService;
     private final BookMapper bookMapper;
     private final WechatSubscriptionService subscriptionService;
+    private final BookAccessService accessService;
 
     public BudgetAlertNotificationService(BudgetService budgetService, BookMapper bookMapper,
-                                          WechatSubscriptionService subscriptionService) {
+                                          WechatSubscriptionService subscriptionService,
+                                          BookAccessService accessService) {
         this.budgetService = budgetService; this.bookMapper = bookMapper; this.subscriptionService = subscriptionService;
+        this.accessService = accessService;
     }
 
+    /** 没有预算可读权限时跳过可选提醒，不影响已授权的记账事务。 */
     public void onExpenseCreated(Long userId, TransactionEntity transaction) {
         if (!"EXPENSE".equals(transaction.getTransactionType())) return;
+        try {
+            accessService.requireMenu(userId, transaction.getBookId(), BookMenu.BUDGET);
+        } catch (BusinessException exception) {
+            return;
+        }
         BookEntity book = bookMapper.selectById(transaction.getBookId());
         YearMonth month = YearMonth.from(transaction.getHappenedAt().atZone(ZoneId.of("UTC"))
                 .withZoneSameInstant(ZoneId.of(book.getTimezone())));
@@ -47,7 +58,7 @@ public class BudgetAlertNotificationService {
             case "OVER" -> "预算已超限";
             default -> "预算达到预警线";
         };
-        subscriptionService.enqueue("BUDGET_" + book.getId() + "_" + month + "_" + level, userId,
+        subscriptionService.enqueue("BUDGET_" + book.getId() + "_" + month + "_" + level, userId, book.getId(),
                 "BUDGET_ALERT", "/pages/budget/budget",
                 Map.of("time1", Map.of("value", alertTime),
                         "amount3", Map.of("value", budget.remainingAmount().max(BigDecimal.ZERO)

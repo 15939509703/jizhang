@@ -1,5 +1,8 @@
 package com.lhj.jizhang.user.service;
 
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.BookMenu;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
@@ -55,7 +58,7 @@ public class RecurringRuleService {
     }
 
     public List<RecurringRuleOutDTO> list(Long userId, Long bookId, String status) {
-        bookAccessService.requireMember(userId, bookId);
+        bookAccessService.requireMenu(userId, bookId, BookMenu.RECURRING);
         if (status != null && !STATUSES.contains(status)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "周期规则状态不正确");
         }
@@ -72,13 +75,13 @@ public class RecurringRuleService {
 
     public RecurringRuleOutDTO get(Long userId, Long ruleId) {
         RecurringRuleEntity rule = requireRule(ruleId);
-        bookAccessService.requireMember(userId, rule.getBookId());
+        bookAccessService.requireMenu(userId, rule.getBookId(), BookMenu.RECURRING);
         return toOutput(rule, recentExecutions(ruleId));
     }
 
     @Transactional
     public RecurringRuleOutDTO create(Long userId, RecurringRuleCreateInDTO input) {
-        bookAccessService.requireWritable(userId, input.bookId());
+        bookAccessService.requireAction(userId, input.bookId(), BookAction.RECURRING_MANAGE);
         BookEntity book = requireBook(input.bookId());
         validateDates(input.startDate(), input.endDate());
         validateReferences(input.bookId(), input.transactionType(), input.categoryId(), input.accountId(),
@@ -103,7 +106,7 @@ public class RecurringRuleService {
     @Transactional
     public RecurringRuleOutDTO update(Long userId, Long ruleId, RecurringRuleUpdateInDTO input) {
         RecurringRuleEntity rule = requireRuleForUpdate(ruleId);
-        bookAccessService.requireWritable(userId, rule.getBookId());
+        bookAccessService.requireAction(userId, rule.getBookId(), BookAction.RECURRING_MANAGE);
         if (!input.version().equals(rule.getVersion())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "周期规则已发生变化，请刷新后重试");
         }
@@ -125,7 +128,7 @@ public class RecurringRuleService {
     @Transactional
     public RecurringRuleOutDTO pause(Long userId, Long ruleId) {
         RecurringRuleEntity rule = requireRuleForUpdate(ruleId);
-        bookAccessService.requireWritable(userId, rule.getBookId());
+        bookAccessService.requireAction(userId, rule.getBookId(), BookAction.RECURRING_MANAGE);
         rule.setStatus("PAUSED");
         touch(rule, userId);
         ruleMapper.updateById(rule);
@@ -135,7 +138,7 @@ public class RecurringRuleService {
     @Transactional
     public RecurringRuleOutDTO resume(Long userId, Long ruleId) {
         RecurringRuleEntity rule = requireRuleForUpdate(ruleId);
-        bookAccessService.requireWritable(userId, rule.getBookId());
+        bookAccessService.requireAction(userId, rule.getBookId(), BookAction.RECURRING_MANAGE);
         rule.setNextExecutionDate(nextAfterToday(rule, requireBook(rule.getBookId())));
         rule.setStatus(rule.getNextExecutionDate() == null ? "COMPLETED" : "ACTIVE");
         touch(rule, userId);
@@ -146,7 +149,7 @@ public class RecurringRuleService {
     @Transactional
     public void delete(Long userId, Long ruleId) {
         RecurringRuleEntity rule = requireRuleForUpdate(ruleId);
-        bookAccessService.requireWritable(userId, rule.getBookId());
+        bookAccessService.requireAction(userId, rule.getBookId(), BookAction.RECURRING_MANAGE);
         rule.setDeletedFlag(1);
         rule.setStatus("COMPLETED");
         rule.setNextExecutionDate(null);

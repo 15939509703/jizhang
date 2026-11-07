@@ -42,7 +42,7 @@ class RecurringRuleServiceTest {
 
         RecurringRuleOutDTO result = service.resume(7L, 10L);
 
-        verify(accessService).requireWritable(7L, 1L);
+        verify(accessService).requireAction(7L, 1L, com.lhj.jizhang.user.model.BookAction.RECURRING_MANAGE);
         verify(ruleMapper).updateById(rule);
         assertTrue(result.nextExecutionDate().isAfter(today));
         assertEquals(YearMonth.from(today).plusMonths(1), YearMonth.from(result.nextExecutionDate()));

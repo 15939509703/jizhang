@@ -14,12 +14,18 @@ public interface TransactionMapper extends BaseMapper<TransactionEntity> {
     @Select("SELECT * FROM fin_transaction WHERE id = #{id} FOR UPDATE")
     TransactionEntity selectByIdForUpdate(@Param("id") Long id);
 
+    /** 现有全账本汇总入口，保留给仅允许 ALL 范围的报表。 */
+    default TransactionSummaryAggregate selectSummary(Long bookId, LocalDateTime startAt, LocalDateTime endAt) {
+        return selectSummary(bookId, startAt, endAt, null);
+    }
+
     @Select("""
             SELECT
                 COALESCE(SUM(CASE WHEN transaction_type = 'INCOME' THEN amount ELSE 0 END), 0) AS income_amount,
                 COALESCE(SUM(CASE WHEN transaction_type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS expense_amount
             FROM fin_transaction t
             WHERE t.book_id = #{bookId}
+              AND (#{createdUserId} IS NULL OR t.created_user_id = #{createdUserId})
               AND t.status = 'EFFECTIVE'
               AND t.happened_at >= #{startAt}
               AND t.happened_at < #{endAt}
@@ -33,13 +39,15 @@ public interface TransactionMapper extends BaseMapper<TransactionEntity> {
     TransactionSummaryAggregate selectSummary(
             @Param("bookId") Long bookId,
             @Param("startAt") LocalDateTime startAt,
-            @Param("endAt") LocalDateTime endAt
+            @Param("endAt") LocalDateTime endAt,
+            @Param("createdUserId") Long createdUserId
     );
 
     @Select("""
             SELECT t.*
             FROM fin_transaction t
             WHERE t.book_id = #{bookId}
+              AND (#{createdUserId} IS NULL OR t.created_user_id = #{createdUserId})
               AND t.status = 'EFFECTIVE'
               AND t.transaction_type IN ('INCOME', 'EXPENSE')
               AND t.happened_at >= #{startAt}
@@ -53,7 +61,8 @@ public interface TransactionMapper extends BaseMapper<TransactionEntity> {
     List<TransactionEntity> selectStatisticsTransactions(
             @Param("bookId") Long bookId,
             @Param("startAt") LocalDateTime startAt,
-            @Param("endAt") LocalDateTime endAt
+            @Param("endAt") LocalDateTime endAt,
+            @Param("createdUserId") Long createdUserId
     );
 
     @Select("""

@@ -7,6 +7,7 @@ import com.lhj.jizhang.user.entity.BookEntity;
 import com.lhj.jizhang.user.mapper.BookMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
 import com.lhj.jizhang.user.model.TransactionSummaryAggregate;
+import com.lhj.jizhang.user.model.TransactionScope;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -32,13 +33,14 @@ public class TransactionSummaryService {
     }
 
     public TransactionSummaryOutDTO summarize(Long userId, Long bookId, YearMonth month) {
-        bookAccessService.requireMember(userId, bookId);
+        TransactionScope scope = bookAccessService.requireTransactionScope(userId, bookId);
         BookEntity book = requireBook(bookId);
         ZoneId timezone = ZoneId.of(book.getTimezone());
         YearMonth targetMonth = month == null ? YearMonth.now(timezone) : month;
         LocalDateTime startAt = toUtc(targetMonth.atDay(1).atStartOfDay(timezone));
         LocalDateTime endAt = toUtc(targetMonth.plusMonths(1).atDay(1).atStartOfDay(timezone));
-        TransactionSummaryAggregate aggregate = transactionMapper.selectSummary(bookId, startAt, endAt);
+        TransactionSummaryAggregate aggregate = transactionMapper.selectSummary(bookId, startAt, endAt,
+                scope == TransactionScope.OWN_CREATED ? userId : null);
         BigDecimal income = valueOrZero(aggregate == null ? null : aggregate.getIncomeAmount());
         BigDecimal expense = valueOrZero(aggregate == null ? null : aggregate.getExpenseAmount());
         return new TransactionSummaryOutDTO(targetMonth.toString(), income, expense,

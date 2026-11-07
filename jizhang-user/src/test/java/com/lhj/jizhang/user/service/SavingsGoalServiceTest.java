@@ -72,7 +72,7 @@ class SavingsGoalServiceTest {
         assertEquals("海岛旅行", result.description());
         assertEquals("COMPLETED", result.status());
         assertEquals(3, result.version());
-        verify(bookAccessService).requireWritable(7L, 1L);
+        verify(bookAccessService).requireAction(7L, 1L, com.lhj.jizhang.user.model.BookAction.SAVINGS_GOALS_MANAGE);
         verify(goalMapper).updateById(goal);
     }
 
@@ -98,7 +98,7 @@ class SavingsGoalServiceTest {
         assertEquals(1, goal.getDeletedFlag());
         assertEquals("CLOSED", goal.getStatus());
         assertEquals(3, goal.getVersion());
-        verify(bookAccessService).requireWritable(7L, 1L);
+        verify(bookAccessService).requireAction(7L, 1L, com.lhj.jizhang.user.model.BookAction.SAVINGS_GOALS_MANAGE);
         verify(goalMapper).updateById(goal);
     }
 

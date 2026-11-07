@@ -26,6 +26,8 @@ import com.lhj.jizhang.user.mapper.DuplicateFindingMapper;
 import com.lhj.jizhang.user.mapper.RestoreCheckMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
 import com.lhj.jizhang.user.model.BookPermission;
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.BookMenu;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
@@ -88,7 +90,8 @@ public class DataSecurityService {
     }
 
     public List<BackupTaskOutDTO> backups(Long userId, Long bookId) {
-        accessService.requirePermission(userId, bookId, BookPermission.EXPORT_DATA);
+        accessService.requireLedgerFileAccess(userId, bookId);
+        accessService.requireAction(userId, bookId, BookAction.DATA_SECURITY_BACKUP);
         return backupMapper.selectList(Wrappers.<BackupTaskEntity>lambdaQuery().eq(BackupTaskEntity::getUserId, userId)
                 .eq(BackupTaskEntity::getBookId, bookId).orderByDesc(BackupTaskEntity::getId).last("LIMIT 30"))
                 .stream().map(this::backupOutput).toList();
@@ -96,7 +99,8 @@ public class DataSecurityService {
 
     @Transactional
     public BackupTaskOutDTO createBackup(Long userId, Long bookId) {
-        accessService.requirePermission(userId, bookId, BookPermission.EXPORT_DATA);
+        accessService.requireLedgerFileAccess(userId, bookId);
+        accessService.requireAction(userId, bookId, BookAction.DATA_SECURITY_BACKUP);
         BackupTaskEntity task = new BackupTaskEntity();
         task.setTaskNo(BusinessIdGenerator.next("BAK_")); task.setUserId(userId); task.setBookId(bookId);
         task.setFormatVersion(FORMAT_VERSION); task.setTaskStatus("PROCESSING");
@@ -131,6 +135,7 @@ public class DataSecurityService {
         BackupTaskEntity task = requireBackup(userId, id);
         BackupPayload payload = readPayload(task);
         accessService.requirePermission(userId, payload.book().getId(), BookPermission.CREATE_TRANSACTIONS);
+        accessService.requireAction(userId, payload.book().getId(), BookAction.DATA_SECURITY_RESTORE);
         int skipped = 0; int added = 0; int conflicts = 0;
         for (BackupTransaction item : payload.transactions) {
             TransactionEntity existing = transactionMapper.selectOne(Wrappers.<TransactionEntity>lambdaQuery()
@@ -158,6 +163,7 @@ public class DataSecurityService {
         BackupTaskEntity task = requireBackup(userId, check.getBackupId());
         BackupPayload payload = readPayload(task);
         accessService.requirePermission(userId, payload.book().getId(), BookPermission.CREATE_TRANSACTIONS);
+        accessService.requireAction(userId, payload.book().getId(), BookAction.DATA_SECURITY_RESTORE);
         int restored = 0;
         for (BackupTransaction item : payload.transactions()) {
             TransactionEntity source = item.transaction();
@@ -183,7 +189,8 @@ public class DataSecurityService {
     }
 
     public List<DuplicateFindingOutDTO> findings(Long userId, Long bookId) {
-        accessService.requireMember(userId, bookId);
+        accessService.requireMenu(userId, bookId, BookMenu.DATA_SECURITY);
+        accessService.requirePermission(userId, bookId, BookPermission.VIEW_TRANSACTIONS);
         List<DuplicateFindingEntity> rows = findingMapper.selectList(Wrappers.<DuplicateFindingEntity>lambdaQuery()
                 .eq(DuplicateFindingEntity::getBookId, bookId).orderByDesc(DuplicateFindingEntity::getId).last("LIMIT 100"));
         return findingOutputs(rows);
@@ -191,7 +198,9 @@ public class DataSecurityService {
 
     @Transactional
     public List<DuplicateFindingOutDTO> scanDuplicates(Long userId, Long bookId) {
+        accessService.requirePermission(userId, bookId, BookPermission.VIEW_TRANSACTIONS);
         accessService.requirePermission(userId, bookId, BookPermission.EDIT_ALL_TRANSACTIONS);
+        accessService.requireAction(userId, bookId, BookAction.DATA_SECURITY_DUPLICATES);
         List<TransactionEntity> rows = transactionMapper.selectList(Wrappers.<TransactionEntity>lambdaQuery()
                 .eq(TransactionEntity::getBookId, bookId).eq(TransactionEntity::getStatus, "EFFECTIVE")
                 .orderByDesc(TransactionEntity::getHappenedAt).last("LIMIT 500"));
@@ -220,7 +229,9 @@ public class DataSecurityService {
     public DuplicateFindingOutDTO handleFinding(Long userId, Long id, boolean confirmDuplicate) {
         DuplicateFindingEntity finding = findingMapper.selectById(id);
         if (finding == null) throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "重复候选不存在");
+        accessService.requirePermission(userId, finding.getBookId(), BookPermission.VIEW_TRANSACTIONS);
         accessService.requirePermission(userId, finding.getBookId(), BookPermission.EDIT_ALL_TRANSACTIONS);
+        accessService.requireAction(userId, finding.getBookId(), BookAction.DATA_SECURITY_DUPLICATES);
         if ("PENDING".equals(finding.getStatus()) && confirmDuplicate) {
             transactionService.voidTransaction(userId, finding.getCandidateTransactionId());
             finding.setStatus("CONFIRMED");
@@ -287,7 +298,8 @@ public class DataSecurityService {
         BackupTaskEntity task = backupMapper.selectById(id);
         if (task == null || !userId.equals(task.getUserId()) || !"SUCCESS".equals(task.getTaskStatus()))
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "备份任务不存在或不可用");
-        accessService.requirePermission(userId, task.getBookId(), BookPermission.EXPORT_DATA);
+        accessService.requireLedgerFileAccess(userId, task.getBookId());
+        accessService.requireAction(userId, task.getBookId(), BookAction.DATA_SECURITY_BACKUP);
         return task;
     }
 

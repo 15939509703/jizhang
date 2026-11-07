@@ -14,7 +14,7 @@ WORKDIR /app
 
 ENV JAVA_OPTS="-Xms128m -Xmx384m -XX:+ExitOnOutOfMemoryError"
 
-COPY --from=build /workspace/jizhang-bootstrap/target/jizhang-bootstrap-1.0.0-SNAPSHOT.jar /app/app.jar
+COPY --from=build /workspace/jizhang-bootstrap/target.nosync/jizhang-bootstrap-1.0.0-SNAPSHOT.jar /app/app.jar
 
 EXPOSE 8081
 

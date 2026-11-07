@@ -13,6 +13,7 @@ import com.lhj.jizhang.user.mapper.BookMapper;
 import com.lhj.jizhang.user.mapper.RecurringExecutionMapper;
 import com.lhj.jizhang.user.mapper.RecurringRuleMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
+import com.lhj.jizhang.user.model.TransactionScope;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -45,16 +46,19 @@ public class TransactionCalendarService {
     }
 
     public TransactionCalendarOutDTO get(Long userId, Long bookId, YearMonth month) {
-        bookAccessService.requireMember(userId, bookId);
+        TransactionScope scope = bookAccessService.requireTransactionScope(userId, bookId);
         BookEntity book = requireBook(bookId);
         ZoneId zone = ZoneId.of(book.getTimezone());
         YearMonth target = month == null ? YearMonth.now(zone) : month;
         LocalDateTime startAt = toUtc(target.atDay(1).atStartOfDay(zone));
         LocalDateTime endAt = toUtc(target.plusMonths(1).atDay(1).atStartOfDay(zone));
         List<TransactionEntity> transactions = transactionMapper
-                .selectStatisticsTransactions(bookId, startAt, endAt);
+                .selectStatisticsTransactions(bookId, startAt, endAt,
+                        scope == TransactionScope.OWN_CREATED ? userId : null);
         Map<LocalDate, DayAmounts> days = aggregate(transactions, zone);
-        mergePending(days, bookId, target);
+        if (scope == TransactionScope.ALL) {
+            mergePending(days, bookId, target);
+        }
         return output(book, target, days);
     }
 

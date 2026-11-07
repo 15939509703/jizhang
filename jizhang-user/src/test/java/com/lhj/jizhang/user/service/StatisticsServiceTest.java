@@ -45,7 +45,7 @@ class StatisticsServiceTest {
 
         BillOverviewOutDTO overview = service.billOverview(7L, 1L, 2026);
 
-        verify(bookAccessService).requireMember(7L, 1L);
+        verify(bookAccessService).requireMenu(7L, 1L, com.lhj.jizhang.user.model.BookMenu.REPORTS);
         assertEquals("CNY", overview.currencyCode());
         assertEquals(2026, overview.year());
         assertEquals(new BigDecimal("100.00"), overview.years().get(0).income());

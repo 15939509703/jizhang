@@ -10,6 +10,8 @@ import com.lhj.jizhang.user.entity.TransactionEntity;
 import com.lhj.jizhang.user.mapper.AttachmentMapper;
 import com.lhj.jizhang.user.mapper.TransactionMapper;
 import com.lhj.jizhang.user.model.AttachmentDownload;
+import com.lhj.jizhang.user.model.BookAction;
+import com.lhj.jizhang.user.model.TransactionScope;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpStatus;
@@ -53,6 +55,7 @@ public class AttachmentService {
     public TransactionAttachmentOutDTO upload(Long userId, Long transactionId, MultipartFile file) {
         TransactionEntity transaction = requireTransaction(transactionId);
         bookAccessService.requireWritable(userId, transaction.getBookId());
+        bookAccessService.requireAction(userId, transaction.getBookId(), BookAction.BILLS_ATTACHMENT_UPLOAD);
         validateFile(file);
         String objectKey = UUID.randomUUID() + IMAGE_EXTENSIONS.get(file.getContentType());
         Path target = uploadRoot.resolve(objectKey).normalize();
@@ -69,7 +72,7 @@ public class AttachmentService {
 
     public List<TransactionAttachmentOutDTO> list(Long userId, Long transactionId) {
         TransactionEntity transaction = requireTransaction(transactionId);
-        bookAccessService.requireMember(userId, transaction.getBookId());
+        requireVisibleTransaction(userId, transaction);
         return listEntities(transactionId).stream().map(this::toOutput).toList();
     }
 
@@ -85,7 +88,7 @@ public class AttachmentService {
     public AttachmentDownload download(Long userId, Long attachmentId) {
         AttachmentEntity attachment = requireAttachment(attachmentId);
         TransactionEntity transaction = requireTransaction(attachment.getTransactionId());
-        bookAccessService.requireMember(userId, transaction.getBookId());
+        requireVisibleTransaction(userId, transaction);
         Path file = resolveStoredFile(attachment);
         return new AttachmentDownload(new FileSystemResource(file), attachment.getFileName(),
                 attachment.getContentType());
@@ -96,6 +99,7 @@ public class AttachmentService {
         AttachmentEntity attachment = requireAttachment(attachmentId);
         TransactionEntity transaction = requireTransaction(attachment.getTransactionId());
         bookAccessService.requireWritable(userId, transaction.getBookId());
+        bookAccessService.requireAction(userId, transaction.getBookId(), BookAction.BILLS_ATTACHMENT_DELETE);
         attachment.setStatus(0);
         attachment.setModifier(String.valueOf(userId));
         attachmentMapper.updateById(attachment);
@@ -146,6 +150,14 @@ public class AttachmentService {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "账单不存在");
         }
         return transaction;
+    }
+
+    /** 下载和列表均在读取附件前校验其所属账单范围。 */
+    private void requireVisibleTransaction(Long userId, TransactionEntity transaction) {
+        TransactionScope scope = bookAccessService.requireTransactionScope(userId, transaction.getBookId());
+        if (scope == TransactionScope.OWN_CREATED && !userId.equals(transaction.getCreatedUserId())) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "账单不存在", HttpStatus.NOT_FOUND);
+        }
     }
 
     private AttachmentEntity requireAttachment(Long attachmentId) {

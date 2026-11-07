@@ -26,6 +26,8 @@ public class RecurringRuleEntity {
     private String title;
     private String note;
     private String recurrenceType;
+    /** 年度规则的执行月份；其他周期为空。 */
+    private Integer executionMonth;
     private Integer executionDay;
     private Integer monthEndFlag;
     private LocalTime executionTime;

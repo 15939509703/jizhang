@@ -19,6 +19,7 @@ public record RecurringRuleOutDTO(
         String title,
         String note,
         String recurrenceType,
+        Integer executionMonth,
         Integer executionDay,
         boolean monthEnd,
         LocalTime executionTime,

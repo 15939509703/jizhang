@@ -25,8 +25,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -84,6 +86,7 @@ public class RecurringRuleService {
         bookAccessService.requireAction(userId, input.bookId(), BookAction.RECURRING_MANAGE);
         BookEntity book = requireBook(input.bookId());
         validateDates(input.startDate(), input.endDate());
+        validateRecurrence(input.recurrenceType(), input.executionMonth(), input.executionDay(), input.monthEnd());
         validateReferences(input.bookId(), input.transactionType(), input.categoryId(), input.accountId(),
                 input.targetAccountId());
         RecurringRuleEntity rule = new RecurringRuleEntity();
@@ -91,7 +94,7 @@ public class RecurringRuleService {
         rule.setBookId(input.bookId());
         rule.setCreatedUserId(userId);
         apply(rule, input.transactionType(), input.categoryId(), input.accountId(), input.targetAccountId(),
-                input.amount(), input.title(), input.note(), input.recurrenceType(), input.executionDay(),
+                input.amount(), input.title(), input.note(), input.recurrenceType(), input.executionMonth(), input.executionDay(),
                 input.monthEnd(), input.executionTime(), input.startDate(), input.endDate(), input.executionMode());
         rule.setNextExecutionDate(nextFromToday(rule, book));
         rule.setStatus(rule.getNextExecutionDate() == null ? "COMPLETED" : "ACTIVE");
@@ -111,10 +114,11 @@ public class RecurringRuleService {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "周期规则已发生变化，请刷新后重试");
         }
         validateDates(input.startDate(), input.endDate());
+        validateRecurrence(input.recurrenceType(), input.executionMonth(), input.executionDay(), input.monthEnd());
         validateReferences(rule.getBookId(), input.transactionType(), input.categoryId(), input.accountId(),
                 input.targetAccountId());
         apply(rule, input.transactionType(), input.categoryId(), input.accountId(), input.targetAccountId(),
-                input.amount(), input.title(), input.note(), input.recurrenceType(), input.executionDay(),
+                input.amount(), input.title(), input.note(), input.recurrenceType(), input.executionMonth(), input.executionDay(),
                 input.monthEnd(), input.executionTime(), input.startDate(), input.endDate(), input.executionMode());
         rule.setNextExecutionDate(nextFromToday(rule, requireBook(rule.getBookId())));
         if (!"PAUSED".equals(rule.getStatus())) {
@@ -206,9 +210,28 @@ public class RecurringRuleService {
         }
     }
 
+    /** 校验周期对应的月份、日期和月末选项。 */
+    private void validateRecurrence(String type, Integer month, Integer day, Boolean monthEnd) {
+        boolean valid = type != null && day != null && day >= 1 && day <= 31;
+        if ("DAILY".equals(type)) {
+            valid = month == null && day == null && Boolean.FALSE.equals(monthEnd);
+        } else if ("MONTHLY".equals(type)) {
+            valid = valid && month == null && monthEnd != null;
+        } else if ("YEARLY".equals(type)) {
+            valid = valid && month != null && month >= 1 && month <= 12
+                    && Boolean.FALSE.equals(monthEnd)
+                    && day <= YearMonth.of(2024, month).lengthOfMonth();
+        } else {
+            valid = false;
+        }
+        if (!valid) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "周期执行日期不正确");
+        }
+    }
+
     private void apply(RecurringRuleEntity rule, String type, Long categoryId, Long accountId,
                        Long targetAccountId, java.math.BigDecimal amount, String title, String note,
-                       String recurrenceType, Integer executionDay, Boolean monthEnd,
+                       String recurrenceType, Integer executionMonth, Integer executionDay, Boolean monthEnd,
                        java.time.LocalTime executionTime, LocalDate startDate, LocalDate endDate,
                        String executionMode) {
         rule.setTransactionType(type);
@@ -219,6 +242,7 @@ public class RecurringRuleService {
         rule.setTitle(title.trim());
         rule.setNote(note);
         rule.setRecurrenceType(recurrenceType);
+        rule.setExecutionMonth(executionMonth);
         rule.setExecutionDay(executionDay);
         rule.setMonthEndFlag(Boolean.TRUE.equals(monthEnd) ? 1 : 0);
         rule.setExecutionTime(executionTime);
@@ -228,15 +252,16 @@ public class RecurringRuleService {
     }
 
     private LocalDate nextFromToday(RecurringRuleEntity rule, BookEntity book) {
-        LocalDate today = LocalDate.now(ZoneId.of(book.getTimezone()));
-        return MonthlyRecurrenceCalculator.nextDate(today, rule.getStartDate(), rule.getEndDate(),
-                rule.getExecutionDay(), rule.getMonthEndFlag() == 1);
+        ZonedDateTime now = ZonedDateTime.now(ZoneId.of(book.getTimezone()));
+        LocalDate from = !"MONTHLY".equals(rule.getRecurrenceType())
+                && now.toLocalTime().isAfter(rule.getExecutionTime())
+                ? now.toLocalDate().plusDays(1) : now.toLocalDate();
+        return RecurringDateCalculator.nextDate(from, rule);
     }
 
     private LocalDate nextAfterToday(RecurringRuleEntity rule, BookEntity book) {
         LocalDate tomorrow = LocalDate.now(ZoneId.of(book.getTimezone())).plusDays(1);
-        return MonthlyRecurrenceCalculator.nextDate(tomorrow, rule.getStartDate(), rule.getEndDate(),
-                rule.getExecutionDay(), rule.getMonthEndFlag() == 1);
+        return RecurringDateCalculator.nextDate(tomorrow, rule);
     }
 
     private void touch(RecurringRuleEntity rule, Long userId) {
@@ -265,7 +290,7 @@ public class RecurringRuleService {
     RecurringRuleOutDTO toOutput(RecurringRuleEntity rule, List<RecurringExecutionOutDTO> executions) {
         return new RecurringRuleOutDTO(rule.getId(), rule.getRuleNo(), rule.getBookId(), rule.getCreatedUserId(),
                 rule.getTransactionType(), rule.getCategoryId(), rule.getAccountId(), rule.getTargetAccountId(),
-                rule.getAmount(), rule.getTitle(), rule.getNote(), rule.getRecurrenceType(), rule.getExecutionDay(),
+                rule.getAmount(), rule.getTitle(), rule.getNote(), rule.getRecurrenceType(), rule.getExecutionMonth(), rule.getExecutionDay(),
                 rule.getMonthEndFlag() == 1, rule.getExecutionTime(), rule.getStartDate(), rule.getEndDate(),
                 rule.getNextExecutionDate(), rule.getLastExecutionDate(), rule.getExecutionMode(), rule.getStatus(),
                 rule.getVersion(), rule.getCreatedTime() == null ? null : rule.getCreatedTime().toInstant(ZoneOffset.UTC),

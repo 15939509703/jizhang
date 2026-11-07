@@ -24,8 +24,9 @@ public record RecurringRuleUpdateInDTO(
         @NotBlank(message = "标题不能为空") @Size(max = 128, message = "标题长度不能超过128个字符") String title,
         @Size(max = 1000, message = "备注长度不能超过1000个字符") String note,
         @NotBlank(message = "周期类型不能为空")
-        @Pattern(regexp = "MONTHLY", message = "当前仅支持每月周期") String recurrenceType,
-        @NotNull(message = "执行日不能为空") @Min(1) @Max(31) Integer executionDay,
+        @Pattern(regexp = "DAILY|MONTHLY|YEARLY", message = "周期类型不正确") String recurrenceType,
+        @Min(1) @Max(12) Integer executionMonth,
+        @Min(1) @Max(31) Integer executionDay,
         @NotNull(message = "是否月末执行不能为空") Boolean monthEnd,
         @NotNull(message = "执行时间不能为空") LocalTime executionTime,
         @NotNull(message = "开始日期不能为空") LocalDate startDate,

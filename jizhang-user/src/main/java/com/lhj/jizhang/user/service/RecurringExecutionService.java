@@ -313,8 +313,7 @@ public class RecurringExecutionService {
     }
 
     private void advance(RecurringRuleEntity rule, LocalDate scheduledDate) {
-        LocalDate next = MonthlyRecurrenceCalculator.nextDate(scheduledDate.plusDays(1), rule.getStartDate(),
-                rule.getEndDate(), rule.getExecutionDay(), rule.getMonthEndFlag() == 1);
+        LocalDate next = RecurringDateCalculator.nextDate(scheduledDate.plusDays(1), rule);
         rule.setLastExecutionDate(scheduledDate);
         rule.setNextExecutionDate(next);
         rule.setStatus(next == null ? "COMPLETED" : "ACTIVE");

@@ -212,6 +212,7 @@ public class TransactionService {
         if (transaction == null) {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "账单不存在");
         }
+        rejectLoanTransaction(transaction);
         bookAccessService.requireWritable(userId, transaction.getBookId());
         bookAccessService.requirePermission(userId, transaction.getBookId(),
                 userId.equals(transaction.getCreatedUserId())
@@ -242,6 +243,7 @@ public class TransactionService {
         if (transaction == null) {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "账单不存在");
         }
+        rejectLoanTransaction(transaction);
         bookAccessService.requireWritable(userId, transaction.getBookId());
         bookAccessService.requireAction(userId, transaction.getBookId(), BookAction.BILLS_VOID);
         bookAccessService.requirePermission(userId, transaction.getBookId(),
@@ -273,6 +275,13 @@ public class TransactionService {
                 .in(ReimbursementEntity::getStatus, "PENDING", "REIMBURSED"));
         if (reimbursement != null) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "请先取消报销项目再作废原支出");
+        }
+    }
+
+    /** 借出流水属于借还记录，不能通过普通账单入口独立修改。 */
+    private void rejectLoanTransaction(TransactionEntity transaction) {
+        if ("LEND".equals(transaction.getTransactionType())) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "借出流水不能通过账单接口修改");
         }
     }
 

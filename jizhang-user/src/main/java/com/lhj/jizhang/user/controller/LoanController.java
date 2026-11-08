@@ -2,6 +2,7 @@ package com.lhj.jizhang.user.controller;
 
 import com.lhj.jizhang.common.api.ApiResponse;
 import com.lhj.jizhang.security.model.AuthenticatedUser;
+import com.lhj.jizhang.user.dto.LoanAccountOutDTO;
 import com.lhj.jizhang.user.dto.LoanCreateInDTO;
 import com.lhj.jizhang.user.dto.LoanOutDTO;
 import com.lhj.jizhang.user.dto.LoanPageOutDTO;
@@ -26,6 +27,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @Tag(name = "借还管理", description = "借入、借出、还款和催收记录")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
@@ -35,6 +38,16 @@ public class LoanController {
 
     public LoanController(LoanService loanService) {
         this.loanService = loanService;
+    }
+
+    /** 查询当前账本可用于借出的账户，不暴露账户余额。 */
+    @Operation(summary = "查询借出可选账户")
+    @GetMapping("/accounts")
+    public ApiResponse<List<LoanAccountOutDTO>> accounts(
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
+            @Parameter(description = "账本ID", required = true) @RequestParam Long bookId
+    ) {
+        return ApiResponse.success(loanService.accounts(user.userId(), bookId));
     }
 
     @Operation(summary = "新增借还记录")

@@ -131,6 +131,18 @@ class TransactionServiceTest {
     }
 
     @Test
+    void shouldRejectVoidingLinkedLendTransaction() {
+        TransactionEntity transaction = effectiveTransaction();
+        transaction.setTransactionType("LEND");
+        when(transactionMapper.selectByIdForUpdate(100L)).thenReturn(transaction);
+
+        assertThrows(BusinessException.class, () -> service.voidTransaction(7L, 100L));
+
+        verify(accountMapper, never()).updateById(any(AccountEntity.class));
+        verify(transactionMapper, never()).updateById(any(TransactionEntity.class));
+    }
+
+    @Test
     void shouldReverseOldEntryAndApplyUpdatedTransaction() {
         TransactionEntity transaction = effectiveTransaction();
         AccountEntity oldAccount = activeAccount(new BigDecimal("70.00"));

@@ -144,3 +144,13 @@ databaseChangeLog:
             encoding: UTF-8
             splitStatements: true
             stripComments: false
+  - changeSet:
+      id: jizhang-1.3.2-loan-account-11082000
+      author: jizhang
+      changes:
+        - sqlFile:
+            path: 011-loan-account.sql
+            relativeToChangelogFile: true
+            encoding: UTF-8
+            splitStatements: true
+            stripComments: false

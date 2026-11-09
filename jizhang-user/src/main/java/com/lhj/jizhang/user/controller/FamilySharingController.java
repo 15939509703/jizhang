@@ -5,6 +5,7 @@ import com.lhj.jizhang.security.model.AuthenticatedUser;
 import com.lhj.jizhang.user.dto.BookAuditLogOutDTO;
 import com.lhj.jizhang.user.dto.BookInvitationCreateInDTO;
 import com.lhj.jizhang.user.dto.BookInvitationOutDTO;
+import com.lhj.jizhang.user.dto.BookInvitationTokenInDTO;
 import com.lhj.jizhang.user.dto.BookMemberOutDTO;
 import com.lhj.jizhang.user.dto.BookMemberPermissionsInDTO;
 import com.lhj.jizhang.user.service.FamilySharingService;
@@ -41,10 +42,24 @@ public class FamilySharingController {
         return ApiResponse.success(service.preview(user.userId(), token));
     }
 
+    /** 从请求体预览邀请码，供原生 iOS 应用使用。 */
+    @PostMapping("/book-invitations/preview")
+    public ApiResponse<BookInvitationOutDTO> previewByCode(@AuthenticationPrincipal AuthenticatedUser user,
+                                                             @RequestBody @Valid BookInvitationTokenInDTO input) {
+        return ApiResponse.success(service.preview(user.userId(), input.token()));
+    }
+
     @PostMapping("/book-invitations/accept")
     public ApiResponse<BookMemberOutDTO> accept(@AuthenticationPrincipal AuthenticatedUser user,
                                                 @RequestParam String token) {
         return ApiResponse.success(service.accept(user.userId(), token));
+    }
+
+    /** 从请求体接受邀请码，不在 URL 中传递凭证。 */
+    @PostMapping("/book-invitations/accept-by-code")
+    public ApiResponse<BookMemberOutDTO> acceptByCode(@AuthenticationPrincipal AuthenticatedUser user,
+                                                       @RequestBody @Valid BookInvitationTokenInDTO input) {
+        return ApiResponse.success(service.accept(user.userId(), input.token()));
     }
 
     @DeleteMapping("/books/{bookId}/invitations/{invitationId}")

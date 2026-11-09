@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,6 +69,7 @@ class LoanServiceTest {
         assertEquals("LEND", transaction.getValue().getTransactionType());
         assertEquals("CNY", transaction.getValue().getCurrencyCode());
         assertEquals(30L, result.relatedTransactionId());
+        assertEquals(20L, result.accountId());
         assertEquals(20L, entry.getValue().getAccountId());
         assertEquals(30L, entry.getValue().getTransactionId());
         assertEquals(new BigDecimal("-25.00"), entry.getValue().getSignedAmount());
@@ -102,19 +104,100 @@ class LoanServiceTest {
     }
 
     @Test
-    void linkedLendCannotChangeAmountWithoutUpdatingAccount() {
-        LoanRecordEntity loan = new LoanRecordEntity();
-        loan.setBookId(1L);
-        loan.setLoanType("LEND");
-        loan.setVersion(0);
-        loan.setRelatedTransactionId(30L);
-        loan.setTotalAmount(new BigDecimal("25.00"));
-        loan.setRepaidAmount(BigDecimal.ZERO);
+    void historicalLendDeductsFullAmountWhenAccountIsAdded() {
+        LoanRecordEntity loan = loan(null);
+        when(loanRecordMapper.selectByIdForUpdate(10L)).thenReturn(loan);
+        when(accountMapper.selectByIdForUpdate(20L)).thenReturn(account());
+        when(bookMapper.selectById(1L)).thenReturn(book());
+        doAnswer(invocation -> {
+            invocation.<TransactionEntity>getArgument(0).setId(30L);
+            return 1;
+        }).when(transactionMapper).insert(any(TransactionEntity.class));
+
+        var result = service.update(7L, 10L, update("25.00", 20L));
+
+        assertEquals(20L, result.accountId());
+        assertEquals(30L, result.relatedTransactionId());
+        ArgumentCaptor<AccountEntryEntity> entry = ArgumentCaptor.forClass(AccountEntryEntity.class);
+        verify(accountEntryMapper).insert(entry.capture());
+        assertEquals(new BigDecimal("-25.00"), entry.getValue().getSignedAmount());
+        assertEquals(new BigDecimal("75.00"), entry.getValue().getBalanceAfter());
+    }
+
+    @Test
+    void changingLendAmountReversesOldDebitAndAppliesNewDebit() {
+        LoanRecordEntity loan = loan(20L);
+        AccountEntity account = account();
+        when(loanRecordMapper.selectByIdForUpdate(10L)).thenReturn(loan);
+        when(transactionMapper.selectByIdForUpdate(30L)).thenReturn(transaction());
+        when(accountMapper.selectByIdForUpdate(20L)).thenReturn(account);
+
+        var result = service.update(7L, 10L, update("30.00", 20L));
+
+        ArgumentCaptor<AccountEntryEntity> entries = ArgumentCaptor.forClass(AccountEntryEntity.class);
+        verify(accountEntryMapper, times(2)).insert(entries.capture());
+        assertEquals("REVERSAL", entries.getAllValues().get(0).getEntryType());
+        assertEquals(new BigDecimal("25.00"), entries.getAllValues().get(0).getSignedAmount());
+        assertEquals(new BigDecimal("-30.00"), entries.getAllValues().get(1).getSignedAmount());
+        assertEquals(new BigDecimal("95.00"), account.getCurrentBalance());
+        assertEquals(new BigDecimal("30.00"), result.totalAmount());
+        verify(transactionMapper).updateById(any(TransactionEntity.class));
+    }
+
+    @Test
+    void changingLendAccountReturnsOldFundsAndDebitsNewAccount() {
+        LoanRecordEntity loan = loan(20L);
+        AccountEntity previous = account();
+        AccountEntity target = account();
+        target.setId(21L);
+        target.setCurrentBalance(new BigDecimal("50.00"));
+        when(loanRecordMapper.selectByIdForUpdate(10L)).thenReturn(loan);
+        when(transactionMapper.selectByIdForUpdate(30L)).thenReturn(transaction());
+        when(accountMapper.selectByIdForUpdate(20L)).thenReturn(previous);
+        when(accountMapper.selectByIdForUpdate(21L)).thenReturn(target);
+
+        var result = service.update(7L, 10L, update("25.00", 21L));
+
+        assertEquals(21L, result.accountId());
+        assertEquals(new BigDecimal("125.00"), previous.getCurrentBalance());
+        assertEquals(new BigDecimal("25.00"), target.getCurrentBalance());
+    }
+
+    @Test
+    void editingLendWithoutMoneyChangeLeavesAccountUntouched() {
+        LoanRecordEntity loan = loan(20L);
+        TransactionEntity transaction = transaction();
+        transaction.setTitle("借出给张三");
+        when(loanRecordMapper.selectByIdForUpdate(10L)).thenReturn(loan);
+        when(transactionMapper.selectByIdForUpdate(30L)).thenReturn(transaction);
+
+        service.update(7L, 10L, update("25.00", 20L));
+
+        verify(accountMapper, never()).updateById(any(AccountEntity.class));
+        verify(accountEntryMapper, never()).insert(any(AccountEntryEntity.class));
+        verify(transactionMapper, never()).updateById(any(TransactionEntity.class));
+    }
+
+    @Test
+    void cannotReduceAmountBelowAlreadyRepaidAmount() {
+        LoanRecordEntity loan = loan(20L);
+        loan.setRepaidAmount(new BigDecimal("20.00"));
         when(loanRecordMapper.selectByIdForUpdate(10L)).thenReturn(loan);
 
-        assertThrows(BusinessException.class, () -> service.update(7L, 10L,
-                new LoanUpdateInDTO("张三", new BigDecimal("30.00"), null, "OPEN", null, 0)));
+        assertThrows(BusinessException.class, () -> service.update(7L, 10L, update("15.00", 20L)));
 
+        verify(accountMapper, never()).selectByIdForUpdate(any());
+        verify(accountEntryMapper, never()).insert(any(AccountEntryEntity.class));
+    }
+
+    @Test
+    void rejectedAccountDoesNotWriteLedger() {
+        LoanRecordEntity loan = loan(null);
+        when(loanRecordMapper.selectByIdForUpdate(10L)).thenReturn(loan);
+
+        assertThrows(BusinessException.class, () -> service.update(7L, 10L, update("25.00", 20L)));
+
+        verify(accountEntryMapper, never()).insert(any(AccountEntryEntity.class));
         verify(loanRecordMapper, never()).updateById(any(LoanRecordEntity.class));
     }
 
@@ -132,6 +215,39 @@ class LoanServiceTest {
 
     private LoanCreateInDTO input(String type, Long accountId) {
         return new LoanCreateInDTO(1L, type, "张三", new BigDecimal("25.00"), accountId, null, null);
+    }
+
+    private LoanUpdateInDTO update(String amount, Long accountId) {
+        return new LoanUpdateInDTO("张三", new BigDecimal(amount), accountId, null, "OPEN", null, 0);
+    }
+
+    private LoanRecordEntity loan(Long accountId) {
+        LoanRecordEntity loan = new LoanRecordEntity();
+        loan.setBookId(1L);
+        loan.setLoanType("LEND");
+        loan.setVersion(0);
+        loan.setAccountId(accountId);
+        loan.setRelatedTransactionId(accountId == null ? null : 30L);
+        loan.setTotalAmount(new BigDecimal("25.00"));
+        loan.setRepaidAmount(BigDecimal.ZERO);
+        return loan;
+    }
+
+    private BookEntity book() {
+        BookEntity book = new BookEntity();
+        book.setStatus(1);
+        book.setCurrencyCode("CNY");
+        return book;
+    }
+
+    private TransactionEntity transaction() {
+        TransactionEntity transaction = new TransactionEntity();
+        transaction.setId(30L);
+        transaction.setBookId(1L);
+        transaction.setTransactionType("LEND");
+        transaction.setStatus("EFFECTIVE");
+        transaction.setVersion(0);
+        return transaction;
     }
 
     private AccountEntity account() {

@@ -24,6 +24,8 @@ public class LoanRecordEntity {
     private LocalDate dueDate;
     private String status;
     private Long relatedTransactionId;
+    /** 当前借出账户；历史未关联账户的记录为空。 */
+    private Long accountId;
     private String note;
     private Integer version;
     private String creator;

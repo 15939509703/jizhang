@@ -22,6 +22,8 @@ public record LoanUpdateInDTO(
         @DecimalMin(value = "0.01", message = "金额必须大于0")
         @Digits(integer = 17, fraction = 2, message = "金额最多保留2位小数")
         BigDecimal totalAmount,
+        @Schema(description = "借出账户ID，借出时必填", example = "1")
+        Long accountId,
         @Schema(description = "到期日", example = "2026-08-01")
         LocalDate dueDate,
         @Schema(description = "状态", example = "OPEN", allowableValues = {"OPEN", "PARTIAL", "CLOSED"})

@@ -31,28 +31,57 @@ public class WechatUserProvisioningService {
     private final BookMapper bookMapper;
     private final BookMemberMapper bookMemberMapper;
     private final BookService bookService;
+    private final PhoneBindingService phoneBindingService;
 
     public WechatUserProvisioningService(
             UserMapper userMapper,
             UserAuthMapper userAuthMapper,
             BookMapper bookMapper,
             BookMemberMapper bookMemberMapper,
-            BookService bookService
+            BookService bookService,
+            PhoneBindingService phoneBindingService
     ) {
         this.userMapper = userMapper;
         this.userAuthMapper = userAuthMapper;
         this.bookMapper = bookMapper;
         this.bookMemberMapper = bookMemberMapper;
         this.bookService = bookService;
+        this.phoneBindingService = phoneBindingService;
     }
 
+    /** 按微信身份登录；授权手机号存在时关联到同一手机号的已有账号。 */
     @Transactional
-    public LoginUserContext findOrCreate(WechatSession session, WechatLoginInDTO input) {
+    public LoginUserContext findOrCreate(WechatSession session, WechatLoginInDTO input, String phone) {
         UserAuthEntity auth = findAuth(session.openid());
         if (auth != null) {
+            if (phone != null) {
+                phoneBindingService.claimVerifiedPhone(auth.getUserId(), phone);
+            }
             return loginExistingUser(auth, input);
         }
-        return createNewUser(session, input);
+        Long phoneOwner = phone == null ? null : phoneBindingService.findPhoneOwner(phone);
+        if (phoneOwner != null) {
+            return linkWechatToPhoneUser(phoneOwner, session, input, phone);
+        }
+        LoginUserContext context = createNewUser(session, input);
+        if (phone != null) {
+            phoneBindingService.claimVerifiedPhone(context.user().getId(), phone);
+        }
+        return context;
+    }
+
+    /** 在已有 App 用户上增加微信身份，沿用其用户 ID 和账本。 */
+    private LoginUserContext linkWechatToPhoneUser(Long userId, WechatSession session,
+                                                    WechatLoginInDTO input, String phone) {
+        UserEntity user = userMapper.selectById(userId);
+        if (user == null || user.getStatus() == null || user.getStatus() != 1) {
+            throw new BusinessException(ErrorCodes.USER_DATA_INVALID, "手机号对应账号状态异常，请联系管理员");
+        }
+        phoneBindingService.claimVerifiedPhone(userId, phone);
+        UserAuthEntity auth = buildAuth(userId, session);
+        userAuthMapper.insert(auth);
+        updateUserProfile(user, input);
+        return new LoginUserContext(user, auth, ensureDefaultBook(user));
     }
 
     private UserAuthEntity findAuth(String openid) {

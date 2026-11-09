@@ -81,7 +81,7 @@ public class PhoneRegistrationService {
     private BusinessException invalidBinding() {
         return new BusinessException(
                 ErrorCodes.PHONE_BINDING_INVALID,
-                "手机号绑定数据异常，请在微信小程序中重新绑定",
+                "请先在微信小程序中设置登录密码，再用该手机号登录",
                 HttpStatus.CONFLICT
         );
     }

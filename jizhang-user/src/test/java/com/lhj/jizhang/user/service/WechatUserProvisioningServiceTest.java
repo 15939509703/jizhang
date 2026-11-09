@@ -12,6 +12,7 @@ import com.lhj.jizhang.user.mapper.UserAuthMapper;
 import com.lhj.jizhang.user.mapper.UserMapper;
 import com.lhj.jizhang.user.model.LoginUserContext;
 import com.lhj.jizhang.user.model.WechatSession;
+import com.lhj.jizhang.common.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -37,6 +39,8 @@ class WechatUserProvisioningServiceTest {
     private BookMemberMapper bookMemberMapper;
     @Mock
     private BookService bookService;
+    @Mock
+    private PhoneBindingService phoneBindingService;
 
     private WechatUserProvisioningService service;
 
@@ -47,7 +51,8 @@ class WechatUserProvisioningServiceTest {
                 userAuthMapper,
                 bookMapper,
                 bookMemberMapper,
-                bookService
+                bookService,
+                phoneBindingService
         );
     }
 
@@ -59,7 +64,7 @@ class WechatUserProvisioningServiceTest {
 
         LoginUserContext context = service.findOrCreate(
                 new WechatSession("openid-1001", "unionid-1001", "session-key"),
-                new WechatLoginInDTO("code", "小明", "https://example.com/avatar.png")
+                new WechatLoginInDTO("code", "小明", "https://example.com/avatar.png"), null
         );
 
         assertEquals(101L, context.user().getId());
@@ -82,7 +87,7 @@ class WechatUserProvisioningServiceTest {
 
         LoginUserContext context = service.findOrCreate(
                 new WechatSession("openid-1001", null, "new-session-key"),
-                new WechatLoginInDTO("code", "新昵称", "https://example.com/new-avatar.png")
+                new WechatLoginInDTO("code", "新昵称", "https://example.com/new-avatar.png"), null
         );
 
         assertSame(user, context.user());
@@ -105,9 +110,43 @@ class WechatUserProvisioningServiceTest {
         when(bookMapper.selectById(201L)).thenReturn(activeBook(201L));
 
         service.findOrCreate(new WechatSession("openid-1001", null, "new-session-key"),
-                new WechatLoginInDTO("code", "微信昵称", "https://example.com/wechat.png"));
+                new WechatLoginInDTO("code", "微信昵称", "https://example.com/wechat.png"), null);
 
         assertEquals("avatars/101/00000000-0000-0000-0000-000000000001.png", user.getAvatarUrl());
+    }
+
+    @Test
+    void shouldLinkNewWechatIdentityToExistingPhoneUserAndBook() {
+        UserEntity user = activeUser(101L);
+        BookEntity book = activeBook(201L);
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+        when(phoneBindingService.findPhoneOwner("13800138000")).thenReturn(101L);
+        when(userMapper.selectById(101L)).thenReturn(user);
+        when(bookMemberMapper.selectOne(any(Wrapper.class))).thenReturn(activeMember(201L, 101L));
+        when(bookMapper.selectById(201L)).thenReturn(book);
+
+        LoginUserContext context = service.findOrCreate(
+                new WechatSession("openid-new", null, "session-key"),
+                new WechatLoginInDTO("code", "微信昵称", null), "13800138000");
+
+        assertSame(user, context.user());
+        assertSame(book, context.defaultBook());
+        verify(userAuthMapper).insert(any(UserAuthEntity.class));
+        verify(phoneBindingService).claimVerifiedPhone(101L, "13800138000");
+        verify(userMapper, never()).insert(any(UserEntity.class));
+    }
+
+    @Test
+    void shouldRejectExistingWechatUserWhenPhoneBelongsToAnotherUser() {
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(activeAuth(101L));
+        org.mockito.Mockito.doThrow(new BusinessException("CONFLICT", "手机号已被其他账号使用"))
+                .when(phoneBindingService).claimVerifiedPhone(101L, "13800138000");
+
+        assertThrows(BusinessException.class, () -> service.findOrCreate(
+                new WechatSession("openid-1001", null, "session-key"),
+                new WechatLoginInDTO("code", "微信昵称", null), "13800138000"));
+
+        verify(userMapper, never()).insert(any(UserEntity.class));
     }
 
     private void doAssignUserId() {

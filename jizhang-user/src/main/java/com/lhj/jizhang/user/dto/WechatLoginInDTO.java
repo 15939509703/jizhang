@@ -11,6 +11,13 @@ public record WechatLoginInDTO(
         @Schema(description = "用户昵称", example = "小明")
         @Size(max = 64, message = "昵称长度不能超过64个字符") String nickName,
         @Schema(description = "用户头像地址", example = "https://example.com/avatar.png")
-        @Size(max = 512, message = "头像地址长度不能超过512个字符") String avatarUrl
+        @Size(max = 512, message = "头像地址长度不能超过512个字符") String avatarUrl,
+        @Schema(description = "wx.getPhoneNumber 返回的可选手机号授权 code")
+        @Size(max = 256, message = "微信手机号授权凭证过长")
+        String phoneCode
 ) {
+    /** 兼容不授权手机号的现有微信登录调用。 */
+    public WechatLoginInDTO(String code, String nickName, String avatarUrl) {
+        this(code, nickName, avatarUrl, null);
+    }
 }

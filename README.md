@@ -125,15 +125,18 @@ Content-Type: application/json
 {
   "code": "wx.login返回的临时code",
   "nickName": "用户昵称",
-  "avatarUrl": "头像地址"
+  "avatarUrl": "头像地址",
+  "phoneCode": "可选，wx.getPhoneNumber返回的临时code"
 }
 ```
 
-接口不会信任客户端传入的openid。后端使用AppID、AppSecret和临时code向微信服务端换取openid，再创建或查询用户。
+接口不会信任客户端传入的openid或手机号。后端使用AppID、AppSecret和临时code向微信服务端换取openid；提供`phoneCode`时再向微信校验手机号，并关联已有手机号用户。若已有两个用户分别持有账本，手机号冲突会拒绝自动关联。
+
+手机号密码登录使用`POST /api/v1/auth/password/login`；新手机号注册使用`POST /api/v1/auth/phone/register`，成功后直接返回登录会话。小程序已登录用户先调用`POST /api/v1/auth/phone/verify`并提交微信手机号授权code，再调用`POST /api/v1/auth/phone/bind`为固定手机号设置或修改密码；`POST /api/v1/auth/phone/bind/status`返回手机号和密码设置状态。
 
 ## 业务接口
 
-除微信登录和健康检查外，接口都需要携带请求头：
+除微信登录、手机号注册和密码登录、令牌刷新、健康检查等公开接口外，业务接口需要携带请求头：
 
 ```http
 Authorization: Bearer <accessToken>

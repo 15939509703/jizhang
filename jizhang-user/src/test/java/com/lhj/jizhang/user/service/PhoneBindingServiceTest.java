@@ -43,8 +43,7 @@ class PhoneBindingServiceTest {
     }
 
     @Test
-    void bindCreatesPhoneAuthAndPasswordCredentialForWechatUser() {
-        when(userAuthMapper.selectCount(any(Wrapper.class))).thenReturn(1L);
+    void claimVerifiedPhoneCreatesAuth() {
         when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(null);
         when(credentialService.findAnyByUsername(PHONE)).thenReturn(null);
         doAnswer(invocation -> {
@@ -52,43 +51,95 @@ class PhoneBindingServiceTest {
             return 1;
         }).when(userAuthMapper).insert(any(UserAuthEntity.class));
 
-        service.bind(USER_ID, new PhoneBindInDTO(PHONE, PASSWORD));
+        service.claimVerifiedPhone(USER_ID, PHONE);
 
         ArgumentCaptor<UserAuthEntity> authCaptor = ArgumentCaptor.forClass(UserAuthEntity.class);
         verify(userAuthMapper).insert(authCaptor.capture());
         assertEquals(USER_ID, authCaptor.getValue().getUserId());
         assertEquals("PHONE", authCaptor.getValue().getProvider());
         assertEquals(PHONE, authCaptor.getValue().getOpenid());
-        verify(credentialService).bind(USER_ID, new PasswordCredentialInDTO(PHONE, PASSWORD));
+        verify(credentialService, never()).bind(any(), any());
     }
 
     @Test
-    void bindRejectsPhoneOwnedByAnotherUser() {
+    void bindSetsPasswordForVerifiedPhoneOnlyAccount() {
+        UserAuthEntity current = activePhoneAuth(USER_ID, PHONE);
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(current);
+        when(credentialService.findAnyByUsername(PHONE)).thenReturn(null);
+
+        service.bind(USER_ID, new PhoneBindInDTO(PHONE, PASSWORD));
+
+        verify(credentialService).bind(USER_ID, new PasswordCredentialInDTO(PHONE, PASSWORD));
+        verify(userAuthMapper, never()).insert(any(UserAuthEntity.class));
+    }
+
+    @Test
+    void claimRejectsPhoneOwnedByAnotherUser() {
         UserAuthEntity existing = new UserAuthEntity();
         existing.setUserId(8L);
         existing.setProvider("PHONE");
         existing.setOpenid(PHONE);
         existing.setStatus(1);
-        when(userAuthMapper.selectCount(any(Wrapper.class))).thenReturn(1L);
-        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(existing);
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(null, existing);
 
         BusinessException exception = assertThrows(BusinessException.class,
-                () -> service.bind(USER_ID, new PhoneBindInDTO(PHONE, PASSWORD)));
+                () -> service.claimVerifiedPhone(USER_ID, PHONE));
 
         assertEquals(ErrorCodes.PHONE_ALREADY_REGISTERED, exception.getCode());
         verify(credentialService, never()).bind(any(), any());
     }
 
     @Test
-    void bindRejectsNonWechatUser() {
-        when(userAuthMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
+    void claimRejectsChangingCurrentUsersPhone() {
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(activePhoneAuth(USER_ID, PHONE));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.claimVerifiedPhone(USER_ID, "13900139000"));
+
+        assertEquals(ErrorCodes.PHONE_BINDING_INVALID, exception.getCode());
+        verify(userAuthMapper, never()).insert(any(UserAuthEntity.class));
+    }
+
+    @Test
+    void bindRejectsPhoneChange() {
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(activePhoneAuth(USER_ID, PHONE));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.bind(USER_ID, new PhoneBindInDTO("13900139000", PASSWORD)));
+
+        assertEquals(ErrorCodes.PHONE_BINDING_INVALID, exception.getCode());
+        verify(credentialService, never()).bind(any(), any());
+    }
+
+    @Test
+    void bindRejectsBeforeWechatPhoneVerification() {
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(null);
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> service.bind(USER_ID, new PhoneBindInDTO(PHONE, PASSWORD)));
 
         assertEquals(ErrorCodes.PHONE_BINDING_INVALID, exception.getCode());
-        verify(userAuthMapper, never()).selectOne(any(Wrapper.class));
         verify(credentialService, never()).bind(any(), any());
+    }
+
+    @Test
+    void legacyPasswordEndpointCannotClaimUnverifiedPhone() {
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(null);
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.assertUsernameUnchanged(USER_ID, PHONE));
+
+        assertEquals(ErrorCodes.PHONE_BINDING_INVALID, exception.getCode());
+    }
+
+    @Test
+    void legacyPasswordEndpointCannotRenameBoundPhone() {
+        when(userAuthMapper.selectOne(any(Wrapper.class))).thenReturn(activePhoneAuth(USER_ID, PHONE));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.assertUsernameUnchanged(USER_ID, "13900139000"));
+
+        assertEquals(ErrorCodes.PHONE_BINDING_INVALID, exception.getCode());
     }
 
     @Test
@@ -125,5 +176,14 @@ class PhoneBindingServiceTest {
 
         assertEquals(false, output.bound());
         assertEquals(PHONE, output.phone());
+    }
+
+    private UserAuthEntity activePhoneAuth(Long userId, String phone) {
+        UserAuthEntity auth = new UserAuthEntity();
+        auth.setUserId(userId);
+        auth.setProvider("PHONE");
+        auth.setOpenid(phone);
+        auth.setStatus(1);
+        return auth;
     }
 }

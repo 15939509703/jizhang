@@ -85,7 +85,8 @@ public class WechatNotificationClient {
                 exception.getCause() == null ? "none" : exception.getCause().getClass().getName(), httpStatus);
     }
 
-    private synchronized String accessToken() {
+    /** 为小程序业务接口提供共用的缓存 access token。 */
+    public synchronized String accessToken() {
         long now = System.currentTimeMillis();
         if (cachedToken != null && cachedToken.expiresAt > now + 120_000) return cachedToken.value;
         TokenResponse response = client.get().uri(UriComponentsBuilder.fromUriString(notification.tokenUrl())

@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-@Schema(name = "PhoneBindRequest", description = "微信账号绑定手机号登录")
+@Schema(name = "PhoneBindRequest", description = "为已核验手机号设置或修改登录密码")
 public record PhoneBindInDTO(
         @Schema(description = "中国大陆手机号", example = "13800138000")
         @NotBlank(message = "手机号不能为空")

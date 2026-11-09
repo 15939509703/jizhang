@@ -14,12 +14,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
 @Service
 public class PhoneBindingService {
     private static final String PHONE_PROVIDER = "PHONE";
-    private static final String WECHAT_PROVIDER = "WECHAT";
 
     private final UserAuthMapper userAuthMapper;
     private final PasswordCredentialService credentialService;
@@ -29,20 +26,63 @@ public class PhoneBindingService {
         this.credentialService = credentialService;
     }
 
+    /** 为已由微信核验并归属当前用户的手机号设置或修改登录密码。 */
     @Transactional
     public void bind(Long userId, PhoneBindInDTO input) {
-        requireWechatAuth(userId);
         String phone = input.phone().trim();
+        UserAuthEntity current = findCurrentPhoneAuth(userId);
+        if (current == null || current.getStatus() == null || current.getStatus() != 1
+                || !phone.equals(current.getOpenid())) {
+            throw new BusinessException(ErrorCodes.PHONE_BINDING_INVALID,
+                    "请先授权当前微信手机号，已绑定的手机号不能修改", HttpStatus.CONFLICT);
+        }
         ensurePhoneAvailable(userId, phone);
-        try {
-            UserAuthEntity phoneAuth = savePhoneAuth(userId, phone);
-            deactivateOtherPhoneAuths(userId, phoneAuth.getId());
-            credentialService.bind(userId, new PasswordCredentialInDTO(phone, input.password()));
-        } catch (DuplicateKeyException exception) {
-            throw phoneAlreadyRegistered();
+        credentialService.bind(userId, new PasswordCredentialInDTO(phone, input.password()));
+    }
+
+    /** 将微信核验的手机号关联到当前用户，已有手机号不得更换。 */
+    @Transactional
+    public void claimVerifiedPhone(Long userId, String phone) {
+        UserAuthEntity current = findCurrentPhoneAuth(userId);
+        if (current != null && !phone.equals(current.getOpenid())) {
+            throw new BusinessException(ErrorCodes.PHONE_BINDING_INVALID,
+                    "当前账号已绑定其他手机号，不能修改", HttpStatus.CONFLICT);
+        }
+        ensurePhoneAvailable(userId, phone);
+        if (current == null) {
+            try {
+                userAuthMapper.insert(newPhoneAuth(userId, phone));
+            } catch (DuplicateKeyException exception) {
+                throw phoneAlreadyRegistered();
+            }
+        } else if (current.getStatus() == null || current.getStatus() != 1) {
+            current.setStatus(1);
+            current.setModifier(String.valueOf(userId));
+            userAuthMapper.updateById(current);
         }
     }
 
+    /** 查询微信手机号是否已经对应一个 App 或小程序用户。 */
+    public Long findPhoneOwner(String phone) {
+        UserAuthEntity auth = findPhoneAuth(phone);
+        return auth == null ? null : auth.getUserId();
+    }
+
+    /** 禁止旧通用密码接口更改已绑定账号的手机号。 */
+    public void assertUsernameUnchanged(Long userId, String username) {
+        UserAuthEntity current = findCurrentPhoneAuth(userId);
+        String normalized = username.trim();
+        if (current == null && normalized.matches("^1[3-9]\\d{9}$")) {
+            throw new BusinessException(ErrorCodes.PHONE_BINDING_INVALID,
+                    "请先授权当前微信手机号", HttpStatus.CONFLICT);
+        }
+        if (current != null && !current.getOpenid().equals(normalized)) {
+            throw new BusinessException(ErrorCodes.PHONE_BINDING_INVALID,
+                    "手机号不能修改", HttpStatus.CONFLICT);
+        }
+    }
+
+    /** 返回手机号及其密码是否已设置。 */
     public PhoneBindingOutDTO status(Long userId) {
         UserAuthEntity phoneAuth = findCurrentPhoneAuth(userId);
         if (phoneAuth == null || phoneAuth.getStatus() == null || phoneAuth.getStatus() != 1) {
@@ -53,20 +93,7 @@ public class PhoneBindingService {
         return new PhoneBindingOutDTO(bound, phoneAuth.getOpenid());
     }
 
-    private void requireWechatAuth(Long userId) {
-        long count = userAuthMapper.selectCount(Wrappers.<UserAuthEntity>lambdaQuery()
-                .eq(UserAuthEntity::getUserId, userId)
-                .eq(UserAuthEntity::getProvider, WECHAT_PROVIDER)
-                .eq(UserAuthEntity::getStatus, 1));
-        if (count == 0) {
-            throw new BusinessException(
-                    ErrorCodes.PHONE_BINDING_INVALID,
-                    "当前账号不是微信小程序账号，不能绑定手机号",
-                    HttpStatus.FORBIDDEN
-            );
-        }
-    }
-
+    /** 保证手机号和密码凭证均未被其他用户占用。 */
     private void ensurePhoneAvailable(Long userId, String phone) {
         UserAuthEntity phoneAuth = findPhoneAuth(phone);
         if (phoneAuth != null && !phoneAuth.getUserId().equals(userId)) {
@@ -76,24 +103,6 @@ public class PhoneBindingService {
         if (credential != null && !credential.getUserId().equals(userId)) {
             throw phoneAlreadyRegistered();
         }
-    }
-
-    private UserAuthEntity savePhoneAuth(Long userId, String phone) {
-        UserAuthEntity phoneAuth = findPhoneAuth(phone);
-        if (phoneAuth == null) {
-            phoneAuth = findCurrentPhoneAuth(userId);
-        }
-        if (phoneAuth == null) {
-            phoneAuth = newPhoneAuth(userId, phone);
-            userAuthMapper.insert(phoneAuth);
-            return phoneAuth;
-        }
-        phoneAuth.setOpenid(phone);
-        phoneAuth.setSessionVersion(phoneAuth.getSessionVersion() == null ? 1 : phoneAuth.getSessionVersion());
-        phoneAuth.setStatus(1);
-        phoneAuth.setModifier(String.valueOf(userId));
-        userAuthMapper.updateById(phoneAuth);
-        return phoneAuth;
     }
 
     private UserAuthEntity findPhoneAuth(String phone) {
@@ -123,26 +132,10 @@ public class PhoneBindingService {
         return phoneAuth;
     }
 
-    private void deactivateOtherPhoneAuths(Long userId, Long activeAuthId) {
-        if (activeAuthId == null) {
-            return;
-        }
-        List<UserAuthEntity> otherAuths = userAuthMapper.selectList(Wrappers.<UserAuthEntity>lambdaQuery()
-                .eq(UserAuthEntity::getUserId, userId)
-                .eq(UserAuthEntity::getProvider, PHONE_PROVIDER)
-                .ne(UserAuthEntity::getId, activeAuthId)
-                .eq(UserAuthEntity::getStatus, 1));
-        for (UserAuthEntity auth : otherAuths) {
-            auth.setStatus(0);
-            auth.setModifier(String.valueOf(userId));
-            userAuthMapper.updateById(auth);
-        }
-    }
-
     private BusinessException phoneAlreadyRegistered() {
         return new BusinessException(
                 ErrorCodes.PHONE_ALREADY_REGISTERED,
-                "手机号已被其他账号使用",
+                "手机号已关联其他账号，无法自动合并账本，请联系管理员处理",
                 HttpStatus.CONFLICT
         );
     }

@@ -10,6 +10,7 @@ import com.lhj.jizhang.user.dto.PasswordLoginInDTO;
 import com.lhj.jizhang.user.dto.PhoneBindInDTO;
 import com.lhj.jizhang.user.dto.PhoneBindingOutDTO;
 import com.lhj.jizhang.user.dto.PhoneRegisterInDTO;
+import com.lhj.jizhang.user.dto.WechatPhoneCodeInDTO;
 import com.lhj.jizhang.user.dto.WechatLoginInDTO;
 import com.lhj.jizhang.user.dto.WechatLoginOutDTO;
 import com.lhj.jizhang.user.service.PasswordCredentialService;
@@ -17,6 +18,7 @@ import com.lhj.jizhang.user.service.PasswordLoginService;
 import com.lhj.jizhang.user.service.PhoneBindingService;
 import com.lhj.jizhang.user.service.PhoneRegistrationService;
 import com.lhj.jizhang.user.service.WechatLoginService;
+import com.lhj.jizhang.user.client.WechatPhoneClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -35,6 +37,7 @@ public class AuthController {
     private final PasswordLoginService passwordLoginService;
     private final PhoneRegistrationService phoneRegistrationService;
     private final PhoneBindingService phoneBindingService;
+    private final WechatPhoneClient wechatPhoneClient;
     private final PasswordCredentialService passwordCredentialService;
     private final TokenService tokenService;
 
@@ -43,6 +46,7 @@ public class AuthController {
             PasswordLoginService passwordLoginService,
             PhoneRegistrationService phoneRegistrationService,
             PhoneBindingService phoneBindingService,
+            WechatPhoneClient wechatPhoneClient,
             PasswordCredentialService passwordCredentialService,
             TokenService tokenService
     ) {
@@ -50,6 +54,7 @@ public class AuthController {
         this.passwordLoginService = passwordLoginService;
         this.phoneRegistrationService = phoneRegistrationService;
         this.phoneBindingService = phoneBindingService;
+        this.wechatPhoneClient = wechatPhoneClient;
         this.passwordCredentialService = passwordCredentialService;
         this.tokenService = tokenService;
     }
@@ -72,7 +77,7 @@ public class AuthController {
         return ApiResponse.success(phoneRegistrationService.register(input));
     }
 
-    @Operation(summary = "微信账号绑定手机号登录")
+    @Operation(summary = "为已核验手机号设置或修改登录密码")
     @PostMapping("/phone/bind")
     public ApiResponse<Void> bindPhone(
             @AuthenticationPrincipal AuthenticatedUser user,
@@ -80,6 +85,18 @@ public class AuthController {
     ) {
         phoneBindingService.bind(user.userId(), input);
         return ApiResponse.success(null);
+    }
+
+    /** 用户主动授权微信手机号后，将其核验并关联到当前账号。 */
+    @Operation(summary = "验证并绑定微信手机号")
+    @PostMapping("/phone/verify")
+    public ApiResponse<PhoneBindingOutDTO> verifyPhone(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody @Valid WechatPhoneCodeInDTO input
+    ) {
+        String phone = wechatPhoneClient.exchangeCode(input.code());
+        phoneBindingService.claimVerifiedPhone(user.userId(), phone);
+        return ApiResponse.success(phoneBindingService.status(user.userId()));
     }
 
     @Operation(summary = "查询手机号绑定状态")
@@ -96,6 +113,7 @@ public class AuthController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody @Valid PasswordCredentialInDTO input
     ) {
+        phoneBindingService.assertUsernameUnchanged(user.userId(), input.username());
         passwordCredentialService.bind(user.userId(), input);
         return ApiResponse.success(null);
     }

@@ -40,7 +40,7 @@ public class TraceIdFilter extends OncePerRequestFilter {
     private static final Pattern VALID_TRACE_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
     private static final Set<String> SENSITIVE_FIELDS = Set.of(
             "password", "token", "accesstoken", "refreshtoken", "authorization",
-            "appsecret", "secret", "secretbase64", "sessionkey", "openid", "unionid"
+            "appsecret", "secret", "secretbase64", "sessionkey", "openid", "unionid", "phonecode"
     );
 
     private final ObjectMapper objectMapper;

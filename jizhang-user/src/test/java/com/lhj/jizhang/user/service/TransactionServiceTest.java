@@ -25,6 +25,8 @@ import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -130,15 +132,34 @@ class TransactionServiceTest {
         verify(transactionMapper).updateById(transaction);
     }
 
-    @Test
-    void shouldRejectVoidingLinkedLendTransaction() {
+    /** 借出及本金收回流水不能独立作废，避免账户余额与借还记录脱节。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"LEND", "REPAYMENT"})
+    void shouldRejectVoidingLoanTransaction(String transactionType) {
         TransactionEntity transaction = effectiveTransaction();
-        transaction.setTransactionType("LEND");
+        transaction.setTransactionType(transactionType);
         when(transactionMapper.selectByIdForUpdate(100L)).thenReturn(transaction);
 
         assertThrows(BusinessException.class, () -> service.voidTransaction(7L, 100L));
 
         verify(accountMapper, never()).updateById(any(AccountEntity.class));
+        verify(transactionMapper, never()).updateById(any(TransactionEntity.class));
+    }
+
+    /** 普通账单编辑入口不能修改借出及本金收回流水。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"LEND", "REPAYMENT"})
+    void shouldRejectUpdatingLoanTransaction(String transactionType) {
+        TransactionEntity transaction = effectiveTransaction();
+        transaction.setTransactionType(transactionType);
+        when(transactionMapper.selectByIdForUpdate(100L)).thenReturn(transaction);
+        TransactionUpdateInDTO input = new TransactionUpdateInDTO("INCOME", 21L, 11L, null,
+                new BigDecimal("40.00"), Instant.parse("2026-07-22T10:00:00Z"), "修改", null, 0);
+
+        assertThrows(BusinessException.class, () -> service.update(7L, 100L, input));
+
+        verify(accountMapper, never()).updateById(any(AccountEntity.class));
+        verify(accountEntryMapper, never()).insert(any(AccountEntryEntity.class));
         verify(transactionMapper, never()).updateById(any(TransactionEntity.class));
     }
 

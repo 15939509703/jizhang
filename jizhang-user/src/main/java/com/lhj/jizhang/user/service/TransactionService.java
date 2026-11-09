@@ -278,10 +278,10 @@ public class TransactionService {
         }
     }
 
-    /** 借出流水属于借还记录，不能通过普通账单入口独立修改。 */
+    /** 借出和本金收回流水属于借还记录，不能通过普通账单入口独立修改或作废。 */
     private void rejectLoanTransaction(TransactionEntity transaction) {
-        if ("LEND".equals(transaction.getTransactionType())) {
-            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "借出流水不能通过账单接口修改");
+        if ("LEND".equals(transaction.getTransactionType()) || "REPAYMENT".equals(transaction.getTransactionType())) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "借还流水不能通过账单接口修改或作废");
         }
     }
 

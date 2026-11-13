@@ -15,6 +15,8 @@ public record LoanRepaymentInDTO(
         @DecimalMin(value = "0.01", message = "还款金额必须大于0")
         @Digits(integer = 17, fraction = 2, message = "金额最多保留2位小数")
         BigDecimal amount,
+        @Schema(description = "本次还款或收款账户ID；未传时使用借还关联账户", example = "1")
+        Long accountId,
         @Schema(description = "备注", example = "微信已收款")
         @Size(max = 200, message = "还款备注长度不能超过200个字符")
         String note

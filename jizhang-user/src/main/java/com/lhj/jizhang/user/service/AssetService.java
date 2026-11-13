@@ -12,9 +12,13 @@ import com.lhj.jizhang.user.dto.AssetTrendPointOutDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
 import com.lhj.jizhang.user.entity.AccountEntryEntity;
 import com.lhj.jizhang.user.entity.BookEntity;
+import com.lhj.jizhang.user.entity.LoanRecordEntity;
+import com.lhj.jizhang.user.entity.TransactionEntity;
 import com.lhj.jizhang.user.mapper.AccountEntryMapper;
 import com.lhj.jizhang.user.mapper.AccountMapper;
 import com.lhj.jizhang.user.mapper.BookMapper;
+import com.lhj.jizhang.user.mapper.LoanRecordMapper;
+import com.lhj.jizhang.user.mapper.TransactionMapper;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -34,13 +38,18 @@ public class AssetService {
     private final AccountEntryMapper accountEntryMapper;
     private final BookMapper bookMapper;
     private final BookAccessService bookAccessService;
+    private final LoanRecordMapper loanRecordMapper;
+    private final TransactionMapper transactionMapper;
 
     public AssetService(AccountMapper accountMapper, AccountEntryMapper accountEntryMapper,
-                        BookMapper bookMapper, BookAccessService bookAccessService) {
+                        BookMapper bookMapper, BookAccessService bookAccessService,
+                        LoanRecordMapper loanRecordMapper, TransactionMapper transactionMapper) {
         this.accountMapper = accountMapper;
         this.accountEntryMapper = accountEntryMapper;
         this.bookMapper = bookMapper;
         this.bookAccessService = bookAccessService;
+        this.loanRecordMapper = loanRecordMapper;
+        this.transactionMapper = transactionMapper;
     }
 
     public AssetSummaryOutDTO summary(Long userId, Long bookId) {
@@ -53,9 +62,10 @@ public class AssetService {
                 .filter(account -> "LIABILITY".equals(account.getAccountNature())).toList();
         BigDecimal totalCreditLimit = liabilityAccounts.stream().map(this::creditLimit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal liabilities = liabilityAccounts.stream()
+        BigDecimal creditLiabilities = liabilityAccounts.stream()
                 .map(account -> liabilityAmount(account, account.getCurrentBalance()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal liabilities = creditLiabilities.add(borrowedOutstanding(loadBorrowedLoans(bookId)));
         BigDecimal netAssets = totalAssets.subtract(liabilities);
         return new AssetSummaryOutDTO(bookId, book.getCurrencyCode(), totalAssets, totalCreditLimit, liabilities,
                 netAssets, mapAccounts(accounts, "ASSET"), mapAccounts(accounts, "LIABILITY"));
@@ -73,9 +83,14 @@ public class AssetService {
         List<YearMonth> targetMonths = targetMonths(current, count);
         List<AccountEntity> accounts = allIncludedAccounts(bookId);
         Map<Long, List<AccountEntryEntity>> entries = loadEntries(accounts, monthEnd(targetMonths.getFirst(), zone));
+        List<LoanRecordEntity> loans = loadBorrowedLoans(bookId);
+        Map<Long, List<TransactionEntity>> repayments = loadRepayments(loans, monthEnd(targetMonths.getFirst(), zone));
         List<AssetTrendPointOutDTO> points = targetMonths.stream()
-                .map(month -> new AssetTrendPointOutDTO(month.toString(), netAssetsAt(accounts, entries,
-                        month.equals(current) ? Instant.now() : monthEnd(month, zone))))
+                .map(month -> {
+                    Instant cutoff = month.equals(current) ? Instant.now() : monthEnd(month, zone);
+                    return new AssetTrendPointOutDTO(month.toString(), netAssetsAt(accounts, entries, cutoff)
+                            .subtract(borrowedOutstandingAt(loans, repayments, cutoff)));
+                })
                 .toList();
         return new AssetTrendOutDTO(bookId, book.getCurrencyCode(), points);
     }
@@ -113,6 +128,54 @@ public class AssetService {
                         .gt(AccountEntryEntity::getHappenedAt, LocalDateTime.ofInstant(earliest, ZoneOffset.UTC))
                         .orderByAsc(AccountEntryEntity::getHappenedAt, AccountEntryEntity::getId)).stream()
                 .collect(Collectors.groupingBy(AccountEntryEntity::getAccountId));
+    }
+
+    /** 读取借入记录，包含已结清记录以还原历史月份负债。 */
+    private List<LoanRecordEntity> loadBorrowedLoans(Long bookId) {
+        return loanRecordMapper.selectList(Wrappers.<LoanRecordEntity>lambdaQuery()
+                .eq(LoanRecordEntity::getBookId, bookId)
+                .eq(LoanRecordEntity::getLoanType, "BORROW"));
+    }
+
+    /** 读取首个趋势月末之后的归还流水，用于回推各月未还本金。 */
+    private Map<Long, List<TransactionEntity>> loadRepayments(List<LoanRecordEntity> loans, Instant earliest) {
+        List<Long> transactionIds = loans.stream().map(LoanRecordEntity::getRelatedTransactionId)
+                .filter(id -> id != null).toList();
+        if (transactionIds.isEmpty()) {
+            return Map.of();
+        }
+        return transactionMapper.selectList(Wrappers.<TransactionEntity>lambdaQuery()
+                        .in(TransactionEntity::getOriginalTransactionId, transactionIds)
+                        .eq(TransactionEntity::getTransactionType, "REPAYMENT")
+                        .eq(TransactionEntity::getStatus, "EFFECTIVE")
+                        .gt(TransactionEntity::getHappenedAt, LocalDateTime.ofInstant(earliest, ZoneOffset.UTC)))
+                .stream().collect(Collectors.groupingBy(TransactionEntity::getOriginalTransactionId));
+    }
+
+    /** 当前未还借入本金。 */
+    private BigDecimal borrowedOutstanding(List<LoanRecordEntity> loans) {
+        return loans.stream().map(loan -> loan.getTotalAmount().subtract(loan.getRepaidAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** 截止时点未还借入本金；之后的归还金额加回当前余额。 */
+    private BigDecimal borrowedOutstandingAt(List<LoanRecordEntity> loans,
+                                             Map<Long, List<TransactionEntity>> repayments, Instant cutoff) {
+        return loans.stream().filter(loan -> loan.getCreatedTime() == null
+                        || !loan.getCreatedTime().toInstant(ZoneOffset.UTC).isAfter(cutoff))
+                .map(loan -> outstandingAt(loan, repayments, cutoff))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** 历史未关联流水的借入记录按当前已还本金计算。 */
+    private BigDecimal outstandingAt(LoanRecordEntity loan,
+                                     Map<Long, List<TransactionEntity>> repayments, Instant cutoff) {
+        List<TransactionEntity> entries = loan.getRelatedTransactionId() == null ? List.of()
+                : repayments.getOrDefault(loan.getRelatedTransactionId(), List.of());
+        BigDecimal laterRepayments = entries.stream()
+                .filter(item -> item.getHappenedAt().toInstant(ZoneOffset.UTC).isAfter(cutoff))
+                .map(TransactionEntity::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return loan.getTotalAmount().subtract(loan.getRepaidAmount()).add(laterRepayments);
     }
 
     private BigDecimal netAssetsAt(List<AccountEntity> accounts,

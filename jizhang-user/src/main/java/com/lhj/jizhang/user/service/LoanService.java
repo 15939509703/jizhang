@@ -63,9 +63,15 @@ public class LoanService {
         this.transactionMapper = transactionMapper;
     }
 
-    /** 查询可用于借出的本账本有效账户。 */
+    /** 查询可用于借入、借出及归还的本账本有效账户。 */
     public List<LoanAccountOutDTO> accounts(Long userId, Long bookId) {
-        bookAccessService.requireAction(userId, bookId, BookAction.LOANS_MANAGE);
+        var access = bookAccessService.myAccess(userId, bookId);
+        var actions = access.actionPermissions();
+        if (!Boolean.TRUE.equals(access.menuPermissions().get(BookMenu.LOANS.key()))
+                || (!Boolean.TRUE.equals(actions.get(BookAction.LOANS_MANAGE.key()))
+                && !Boolean.TRUE.equals(actions.get(BookAction.LOANS_REPAY.key())))) {
+            throw new BusinessException(ErrorCodes.BOOK_ACCESS_DENIED, "当前成员无账户选择权限");
+        }
         return accountMapper.selectList(Wrappers.<AccountEntity>lambdaQuery()
                         .eq(AccountEntity::getBookId, bookId)
                         .eq(AccountEntity::getStatus, 1)
@@ -77,10 +83,10 @@ public class LoanService {
     @Transactional
     public LoanOutDTO create(Long userId, LoanCreateInDTO input) {
         bookAccessService.requireAction(userId, input.bookId(), BookAction.LOANS_MANAGE);
-        if ("LEND".equals(input.loanType()) && input.accountId() == null) {
-            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "借出必须选择账户");
+        if (input.accountId() == null) {
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "借入或借出必须选择账户");
         }
-        AccountEntity account = "LEND".equals(input.loanType()) ? requireLendAccount(input) : null;
+        AccountEntity account = requireLoanAccount(input.bookId(), input.accountId());
         LoanRecordEntity loan = new LoanRecordEntity();
         loan.setLoanNo(BusinessIdGenerator.next("LOAN_"));
         loan.setBookId(input.bookId());
@@ -95,40 +101,39 @@ public class LoanService {
         loan.setVersion(0);
         loan.setCreator(String.valueOf(userId));
         loan.setModifier(String.valueOf(userId));
-        if (account != null) {
-            loan.setRelatedTransactionId(recordLend(userId, input.bookId(), input.counterpartyName(),
-                    input.totalAmount(), input.note(), account));
-            loan.setAccountId(account.getId());
-        }
+        loan.setRelatedTransactionId(recordPrincipal(userId, input.bookId(), input.counterpartyName(),
+                input.totalAmount(), input.note(), account, input.loanType()));
+        loan.setAccountId(account.getId());
         loanRecordMapper.insert(loan);
         return toOutput(loan);
     }
 
-    /** 锁定并校验借出账户，防止余额并发覆盖。 */
-    private AccountEntity requireLendAccount(LoanCreateInDTO input) {
-        AccountEntity account = accountMapper.selectByIdForUpdate(input.accountId());
-        if (account == null || !input.bookId().equals(account.getBookId())
+    /** 锁定并校验借还关联账户，防止余额并发覆盖。 */
+    private AccountEntity requireLoanAccount(Long bookId, Long accountId) {
+        AccountEntity account = accountMapper.selectByIdForUpdate(accountId);
+        if (account == null || !bookId.equals(account.getBookId())
                 || account.getStatus() != 1 || account.getDeletedFlag() != 0) {
             throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "账户不存在或不可用");
         }
         return account;
     }
 
-    /** 写入借出交易与账户分录，并同步更新账户余额。 */
-    private Long recordLend(Long userId, Long bookId, String name, BigDecimal amount,
-                            String note, AccountEntity account) {
+    /** 写入借还本金交易与账户分录，并同步更新账户余额。 */
+    private Long recordPrincipal(Long userId, Long bookId, String name, BigDecimal amount,
+                                 String note, AccountEntity account, String loanType) {
         BookEntity book = bookMapper.selectById(bookId);
         if (book == null || book.getStatus() != 1) {
             throw new BusinessException(ErrorCodes.BOOK_NOT_FOUND, "账本不存在或不可用");
         }
-        TransactionEntity transaction = buildLendTransaction(userId, bookId, name, amount, note, book);
+        TransactionEntity transaction = buildLoanTransaction(userId, bookId, name, amount, note, book, loanType);
         transactionMapper.insert(transaction);
-        recordLendEntry(userId, transaction, account, amount.negate(), "DECREASE");
+        recordLoanEntry(userId, transaction, account, principalAmount(amount, loanType),
+                "BORROW".equals(loanType) ? "INCREASE" : "DECREASE");
         return transaction.getId();
     }
 
-    /** 记录借出、收回或冲回分录，并更新已锁定账户的余额。 */
-    private void recordLendEntry(Long userId, TransactionEntity transaction, AccountEntity account,
+    /** 记录本金、归还或冲回分录，并更新已锁定账户的余额。 */
+    private void recordLoanEntry(Long userId, TransactionEntity transaction, AccountEntity account,
                                  BigDecimal signedAmount, String entryType) {
         AccountEntryEntity entry = new AccountEntryEntity();
         entry.setTransactionId(transaction.getId());
@@ -147,24 +152,35 @@ public class LoanService {
         accountMapper.updateById(account);
     }
 
-    /** 构造不计入日常收支统计的借出交易。 */
-    private TransactionEntity buildLendTransaction(Long userId, Long bookId, String name,
-                                                   BigDecimal amount, String note, BookEntity book) {
+    /** 构造不计入日常收支统计的借还本金交易。 */
+    private TransactionEntity buildLoanTransaction(Long userId, Long bookId, String name,
+                                                   BigDecimal amount, String note, BookEntity book, String loanType) {
         TransactionEntity transaction = new TransactionEntity();
         transaction.setTransactionNo(BusinessIdGenerator.next("TXN_"));
         transaction.setBookId(bookId);
         transaction.setCreatedUserId(userId);
-        transaction.setTransactionType("LEND");
+        transaction.setTransactionType(loanType);
         transaction.setAmount(amount);
         transaction.setCurrencyCode(book.getCurrencyCode());
         transaction.setHappenedAt(LocalDateTime.now(ZoneOffset.UTC));
-        transaction.setTitle("借出给" + name.trim());
+        transaction.setTitle(principalTitle(loanType, name));
         transaction.setNote(note);
         transaction.setStatus("EFFECTIVE");
         transaction.setVersion(0);
         transaction.setCreator(String.valueOf(userId));
         transaction.setModifier(String.valueOf(userId));
         return transaction;
+    }
+
+    /** 借入本金为正，借出本金为负。 */
+    private BigDecimal principalAmount(BigDecimal amount, String loanType) {
+        return "BORROW".equals(loanType) ? amount : amount.negate();
+    }
+
+    /** 借还本金标题不超过交易表长度。 */
+    private String principalTitle(String loanType, String name) {
+        String title = ("BORROW".equals(loanType) ? "借入自" : "借出给") + name.trim();
+        return title.length() > 128 ? title.substring(0, 128) : title;
     }
 
     public LoanPageOutDTO list(Long userId, Long bookId, String loanType, String status, Long cursorId, Integer limit) {
@@ -231,59 +247,59 @@ public class LoanService {
         if (input.totalAmount().compareTo(loan.getRepaidAmount()) < 0) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "总金额不能小于已还金额");
         }
-        reconcileLend(userId, loan, input);
+        reconcilePrincipal(userId, loan, input);
         applyUpdate(userId, loan, input);
         loanRecordMapper.updateById(loan);
         return toOutput(loan);
     }
 
-    /** 将历史借出补扣，或对已扣款记录冲回旧额并扣除新额。 */
-    private void reconcileLend(Long userId, LoanRecordEntity loan, LoanUpdateInDTO input) {
-        if (!"LEND".equals(loan.getLoanType())) {
-            return;
-        }
+    /** 为历史借还补记本金，或冲回旧金额并按新账户重记。 */
+    private void reconcilePrincipal(Long userId, LoanRecordEntity loan, LoanUpdateInDTO input) {
         if (input.accountId() == null) {
-            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "借出必须选择账户");
+            throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "借入或借出必须选择账户");
         }
         if (loan.getRelatedTransactionId() != null && loan.getAccountId() == null) {
-            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "借出账户未关联，请检查历史流水");
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "借还账户未关联，请检查历史流水");
         }
         if (Objects.equals(loan.getAccountId(), input.accountId())
                 && input.totalAmount().compareTo(loan.getTotalAmount()) == 0) {
-            updateLendTransactionDetails(userId, loan, input);
+            updatePrincipalTransactionDetails(userId, loan, input);
             return;
         }
-        TransactionEntity transaction = requireLendTransaction(loan);
-        Map<Long, AccountEntity> accounts = lockLendAccounts(loan, input.accountId());
+        TransactionEntity transaction = requirePrincipalTransaction(loan);
+        Map<Long, AccountEntity> accounts = lockLoanAccounts(loan, input.accountId());
         if (transaction == null) {
-            loan.setRelatedTransactionId(recordLend(userId, loan.getBookId(), input.counterpartyName(),
-                    input.totalAmount(), input.note(), accounts.get(input.accountId())));
+            loan.setRelatedTransactionId(recordPrincipal(userId, loan.getBookId(), input.counterpartyName(),
+                    input.totalAmount(), input.note(), accounts.get(input.accountId()), loan.getLoanType()));
         } else {
-            adjustLinkedLend(userId, loan, input, transaction, accounts);
+            adjustLinkedPrincipal(userId, loan, input, transaction, accounts);
         }
         loan.setAccountId(input.accountId());
     }
 
-    /** 冲回旧账户扣款、扣除新借出金额并更新关联交易。 */
-    private void adjustLinkedLend(Long userId, LoanRecordEntity loan, LoanUpdateInDTO input,
-                                  TransactionEntity transaction, Map<Long, AccountEntity> accounts) {
-        recordLendEntry(userId, transaction, accounts.get(loan.getAccountId()), loan.getTotalAmount(), "REVERSAL");
-        recordLendEntry(userId, transaction, accounts.get(input.accountId()), input.totalAmount().negate(), "DECREASE");
+    /** 冲回原本金分录、按新账户和金额重记，并更新关联交易。 */
+    private void adjustLinkedPrincipal(Long userId, LoanRecordEntity loan, LoanUpdateInDTO input,
+                                       TransactionEntity transaction, Map<Long, AccountEntity> accounts) {
+        BigDecimal oldAmount = principalAmount(loan.getTotalAmount(), loan.getLoanType());
+        BigDecimal newAmount = principalAmount(input.totalAmount(), loan.getLoanType());
+        recordLoanEntry(userId, transaction, accounts.get(loan.getAccountId()), oldAmount.negate(), "REVERSAL");
+        recordLoanEntry(userId, transaction, accounts.get(input.accountId()), newAmount,
+                "BORROW".equals(loan.getLoanType()) ? "INCREASE" : "DECREASE");
         transaction.setAmount(input.totalAmount());
-        transaction.setTitle("借出给" + input.counterpartyName().trim());
+        transaction.setTitle(principalTitle(loan.getLoanType(), input.counterpartyName()));
         transaction.setNote(input.note());
         transaction.setVersion(transaction.getVersion() + 1);
         transaction.setModifier(String.valueOf(userId));
         transactionMapper.updateById(transaction);
     }
 
-    /** 仅修改记录信息时同步账户流水标题和备注，不改变余额。 */
-    private void updateLendTransactionDetails(Long userId, LoanRecordEntity loan, LoanUpdateInDTO input) {
-        TransactionEntity transaction = requireLendTransaction(loan);
+    /** 仅修改记录信息时同步本金流水标题和备注，不改变余额。 */
+    private void updatePrincipalTransactionDetails(Long userId, LoanRecordEntity loan, LoanUpdateInDTO input) {
+        TransactionEntity transaction = requirePrincipalTransaction(loan);
         if (transaction == null) {
             return;
         }
-        String title = "借出给" + input.counterpartyName().trim();
+        String title = principalTitle(loan.getLoanType(), input.counterpartyName());
         if (!title.equals(transaction.getTitle()) || !Objects.equals(input.note(), transaction.getNote())) {
             transaction.setTitle(title);
             transaction.setNote(input.note());
@@ -293,21 +309,22 @@ public class LoanService {
         }
     }
 
-    /** 锁定原关联交易并验证其仍然是有效借出流水。 */
-    private TransactionEntity requireLendTransaction(LoanRecordEntity loan) {
+    /** 锁定原关联交易并验证其仍然是有效借还本金流水。 */
+    private TransactionEntity requirePrincipalTransaction(LoanRecordEntity loan) {
         if (loan.getRelatedTransactionId() == null) {
             return null;
         }
         TransactionEntity transaction = transactionMapper.selectByIdForUpdate(loan.getRelatedTransactionId());
         if (transaction == null || !loan.getBookId().equals(transaction.getBookId())
-                || !"LEND".equals(transaction.getTransactionType()) || !"EFFECTIVE".equals(transaction.getStatus())) {
-            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "关联借出流水不存在或已失效");
+                || !loan.getLoanType().equals(transaction.getTransactionType())
+                || !"EFFECTIVE".equals(transaction.getStatus())) {
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "关联借还流水不存在或已失效");
         }
         return transaction;
     }
 
     /** 按 ID 顺序锁定新旧账户，已停用的原账户只允许冲回。 */
-    private Map<Long, AccountEntity> lockLendAccounts(LoanRecordEntity loan, Long targetAccountId) {
+    private Map<Long, AccountEntity> lockLoanAccounts(LoanRecordEntity loan, Long targetAccountId) {
         Map<Long, AccountEntity> accounts = new HashMap<>();
         Stream.of(loan.getAccountId(), targetAccountId).filter(Objects::nonNull).distinct().sorted().forEach(id -> {
             AccountEntity account = accountMapper.selectByIdForUpdate(id);
@@ -315,14 +332,14 @@ public class LoanService {
                 throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "账户不存在或不属于当前账本");
             }
             if (id.equals(targetAccountId) && (account.getStatus() != 1 || account.getDeletedFlag() != 0)) {
-                throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "新借出账户不可用");
+                throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "新关联账户不可用");
             }
             accounts.put(id, account);
         });
         return accounts;
     }
 
-    /** 登记本次还款；借出收回同时入账到关联账户，失败时整笔回滚。 */
+    /** 登记本次归还，并在选定账户记录借入扣款或借出收款。 */
     @Transactional
     public LoanOutDTO repay(Long userId, Long id, LoanRepaymentInDTO input) {
         LoanRecordEntity loan = loanRecordMapper.selectByIdForUpdate(id);
@@ -340,7 +357,7 @@ public class LoanService {
         if (nextRepaid.compareTo(loan.getTotalAmount()) > 0) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "还款金额不能超过剩余金额");
         }
-        recordLendRepayment(userId, loan, input);
+        recordRepayment(userId, loan, input);
         loan.setRepaidAmount(nextRepaid);
         loan.setStatus(nextRepaid.compareTo(loan.getTotalAmount()) == 0 ? "CLOSED" : "PARTIAL");
         loan.setNote(appendTimeline(loan.getNote(), repaymentText(loan, input)));
@@ -350,41 +367,37 @@ public class LoanService {
     }
 
     /**
-     * 为本次借出收回生成独立本金流水，并增加已锁定关联账户的余额。
+     * 为本次归还生成本金流水，并更新选定账户的余额。
      *
      * @param userId 操作用户 ID
      * @param loan 已锁定的借还记录
      * @param input 本次收回金额和备注
      */
-    private void recordLendRepayment(Long userId, LoanRecordEntity loan, LoanRepaymentInDTO input) {
-        if (!"LEND".equals(loan.getLoanType())) {
-            return;
-        }
+    private void recordRepayment(Long userId, LoanRecordEntity loan, LoanRepaymentInDTO input) {
         if (loan.getAccountId() == null || loan.getRelatedTransactionId() == null) {
-            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "请先关联借出账户和借出流水后再登记收回");
+            throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "请先关联借还账户和本金流水后再登记归还");
         }
-        TransactionEntity original = requireLendTransaction(loan);
-        AccountEntity account = accountMapper.selectByIdForUpdate(loan.getAccountId());
-        if (account == null || !loan.getBookId().equals(account.getBookId())
-                || account.getStatus() != 1 || account.getDeletedFlag() != 0) {
-            throw new BusinessException(ErrorCodes.ACCOUNT_INVALID, "关联借出账户不存在或不可用，请先修改借出账户");
-        }
-        TransactionEntity transaction = buildLendRepaymentTransaction(userId, loan, input, original);
+        TransactionEntity original = requirePrincipalTransaction(loan);
+        Long accountId = input.accountId() == null ? loan.getAccountId() : input.accountId();
+        AccountEntity account = requireLoanAccount(loan.getBookId(), accountId);
+        TransactionEntity transaction = buildRepaymentTransaction(userId, loan, input, original);
         transactionMapper.insert(transaction);
-        recordLendEntry(userId, transaction, account, input.amount(), "INCREASE");
+        boolean borrowed = "BORROW".equals(loan.getLoanType());
+        recordLoanEntry(userId, transaction, account, borrowed ? input.amount().negate() : input.amount(),
+                borrowed ? "DECREASE" : "INCREASE");
     }
 
     /**
-     * 构造不计入日常收入统计、关联原借出的本金收回交易。
+     * 构造不计入日常收支统计、关联原借还本金的归还交易。
      *
      * @param userId 操作用户 ID
      * @param loan 借还记录
      * @param input 本次收回金额和备注
      * @param original 原借出交易
-     * @return 本次本金收回交易
+     * @return 本次本金归还交易
      */
-    private TransactionEntity buildLendRepaymentTransaction(Long userId, LoanRecordEntity loan,
-                                                           LoanRepaymentInDTO input, TransactionEntity original) {
+    private TransactionEntity buildRepaymentTransaction(Long userId, LoanRecordEntity loan,
+                                                        LoanRepaymentInDTO input, TransactionEntity original) {
         TransactionEntity transaction = new TransactionEntity();
         transaction.setTransactionNo(BusinessIdGenerator.next("TXN_"));
         transaction.setBookId(loan.getBookId());
@@ -394,7 +407,9 @@ public class LoanService {
         transaction.setAmount(input.amount());
         transaction.setCurrencyCode(original.getCurrencyCode());
         transaction.setHappenedAt(LocalDateTime.now(ZoneOffset.UTC));
-        String title = "收回" + loan.getCounterpartyName() + "的借款";
+        String title = "BORROW".equals(loan.getLoanType())
+                ? "归还" + loan.getCounterpartyName() + "的借款"
+                : "收回" + loan.getCounterpartyName() + "的借款";
         transaction.setTitle(title.length() > 128 ? title.substring(0, 128) : title);
         transaction.setNote(input.note());
         transaction.setStatus("EFFECTIVE");
@@ -423,7 +438,7 @@ public class LoanService {
         return toOutput(loan);
     }
 
-    /** 应用借还记录修改；编辑结清时校验收款权限并入账剩余借出本金。 */
+    /** 应用借还记录修改；编辑结清时校验归还权限并入账剩余本金。 */
     private void applyUpdate(Long userId, LoanRecordEntity loan, LoanUpdateInDTO input) {
         loan.setCounterpartyName(input.counterpartyName().trim());
         loan.setTotalAmount(input.totalAmount());
@@ -431,9 +446,9 @@ public class LoanService {
         loan.setStatus(input.status());
         if ("CLOSED".equals(input.status())) {
             BigDecimal amount = input.totalAmount().subtract(loan.getRepaidAmount());
-            if ("LEND".equals(loan.getLoanType()) && amount.signum() > 0) {
+            if (amount.signum() > 0 && loan.getAccountId() != null) {
                 bookAccessService.requireAction(userId, loan.getBookId(), BookAction.LOANS_REPAY);
-                recordLendRepayment(userId, loan, new LoanRepaymentInDTO(amount, input.note()));
+                recordRepayment(userId, loan, new LoanRepaymentInDTO(amount, loan.getAccountId(), input.note()));
             }
             loan.setRepaidAmount(input.totalAmount());
         }

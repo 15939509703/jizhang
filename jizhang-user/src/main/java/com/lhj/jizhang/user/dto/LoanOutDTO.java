@@ -34,7 +34,7 @@ public record LoanOutDTO(
         boolean overdue,
         @Schema(description = "关联账单ID", example = "10")
         Long relatedTransactionId,
-        @Schema(description = "当前借出账户ID；历史未关联账户时为空", example = "1")
+        @Schema(description = "当前借还关联账户ID；历史未关联账户时为空", example = "1")
         Long accountId,
         @Schema(description = "备注和操作时间线")
         String note,

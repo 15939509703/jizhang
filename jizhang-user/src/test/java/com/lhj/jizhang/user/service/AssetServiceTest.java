@@ -6,9 +6,13 @@ import com.lhj.jizhang.user.dto.AssetTrendOutDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
 import com.lhj.jizhang.user.entity.AccountEntryEntity;
 import com.lhj.jizhang.user.entity.BookEntity;
+import com.lhj.jizhang.user.entity.LoanRecordEntity;
+import com.lhj.jizhang.user.entity.TransactionEntity;
 import com.lhj.jizhang.user.mapper.AccountEntryMapper;
 import com.lhj.jizhang.user.mapper.AccountMapper;
 import com.lhj.jizhang.user.mapper.BookMapper;
+import com.lhj.jizhang.user.mapper.LoanRecordMapper;
+import com.lhj.jizhang.user.mapper.TransactionMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,12 +40,17 @@ class AssetServiceTest {
     private BookMapper bookMapper;
     @Mock
     private BookAccessService bookAccessService;
+    @Mock
+    private LoanRecordMapper loanRecordMapper;
+    @Mock
+    private TransactionMapper transactionMapper;
 
     private AssetService service;
 
     @BeforeEach
     void setUp() {
-        service = new AssetService(accountMapper, accountEntryMapper, bookMapper, bookAccessService);
+        service = new AssetService(accountMapper, accountEntryMapper, bookMapper, bookAccessService,
+                loanRecordMapper, transactionMapper);
         when(bookMapper.selectById(1L)).thenReturn(book());
     }
 
@@ -79,6 +88,20 @@ class AssetServiceTest {
     }
 
     @Test
+    void shouldIncludeBorrowedOutstandingInLiabilitiesAndNetAssets() {
+        when(accountMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
+                account(1L, "ASSET", "1000.00", "1000.00"),
+                account(2L, "LIABILITY", "1000.00", "700.00")));
+        LoanRecordEntity loan = borrowedLoan("500.00", "100.00");
+        when(loanRecordMapper.selectList(any(Wrapper.class))).thenReturn(List.of(loan));
+
+        AssetSummaryOutDTO result = service.summary(7L, 1L);
+
+        assertEquals(new BigDecimal("700.00"), result.totalLiabilities());
+        assertEquals(new BigDecimal("300.00"), result.netAssets());
+    }
+
+    @Test
     void shouldReverseEntriesAfterHistoricalMonthEnd() {
         YearMonth current = YearMonth.now(ZoneId.of("Asia/Shanghai"));
         AccountEntity account = account(1L, "ASSET", "1000.00", "1000.00");
@@ -113,6 +136,49 @@ class AssetServiceTest {
 
         assertEquals(new BigDecimal("800.00"), result.points().getFirst().netAssets());
         assertEquals(new BigDecimal("700.00"), result.points().getLast().netAssets());
+    }
+
+    @Test
+    void shouldRestoreBorrowedOutstandingBeforeLaterRepayment() {
+        YearMonth current = YearMonth.now(ZoneId.of("Asia/Shanghai"));
+        LoanRecordEntity loan = borrowedLoan("500.00", "100.00");
+        loan.setCreatedTime(current.minusMonths(2).atDay(1).atStartOfDay());
+        loan.setRelatedTransactionId(30L);
+        TransactionEntity repayment = new TransactionEntity();
+        repayment.setOriginalTransactionId(30L);
+        repayment.setAmount(new BigDecimal("100.00"));
+        repayment.setHappenedAt(current.atDay(1).atStartOfDay());
+        when(accountMapper.selectList(any(Wrapper.class))).thenReturn(List.of(
+                account(1L, "ASSET", "1000.00", "1000.00")));
+        when(loanRecordMapper.selectList(any(Wrapper.class))).thenReturn(List.of(loan));
+        when(transactionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(repayment));
+
+        AssetTrendOutDTO result = service.trend(7L, 1L, 2);
+
+        assertEquals(new BigDecimal("500.00"), result.points().getFirst().netAssets());
+        assertEquals(new BigDecimal("600.00"), result.points().getLast().netAssets());
+    }
+
+    @Test
+    void shouldIncludeHistoricalBorrowWithoutLinkedTransaction() {
+        YearMonth current = YearMonth.now(ZoneId.of("Asia/Shanghai"));
+        LoanRecordEntity loan = borrowedLoan("500.00", "100.00");
+        loan.setCreatedTime(current.minusMonths(2).atDay(1).atStartOfDay());
+        when(accountMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+        when(loanRecordMapper.selectList(any(Wrapper.class))).thenReturn(List.of(loan));
+
+        AssetTrendOutDTO result = service.trend(7L, 1L, 2);
+
+        assertEquals(new BigDecimal("-400.00"), result.points().getFirst().netAssets());
+        assertEquals(new BigDecimal("-400.00"), result.points().getLast().netAssets());
+    }
+
+    private LoanRecordEntity borrowedLoan(String total, String repaid) {
+        LoanRecordEntity loan = new LoanRecordEntity();
+        loan.setLoanType("BORROW");
+        loan.setTotalAmount(new BigDecimal(total));
+        loan.setRepaidAmount(new BigDecimal(repaid));
+        return loan;
     }
 
     private BookEntity book() {

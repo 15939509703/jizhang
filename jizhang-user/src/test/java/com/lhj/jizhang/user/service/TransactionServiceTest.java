@@ -134,7 +134,7 @@ class TransactionServiceTest {
 
     /** 借出及本金收回流水不能独立作废，避免账户余额与借还记录脱节。 */
     @ParameterizedTest
-    @ValueSource(strings = {"LEND", "REPAYMENT"})
+    @ValueSource(strings = {"BORROW", "LEND", "REPAYMENT"})
     void shouldRejectVoidingLoanTransaction(String transactionType) {
         TransactionEntity transaction = effectiveTransaction();
         transaction.setTransactionType(transactionType);
@@ -148,7 +148,7 @@ class TransactionServiceTest {
 
     /** 普通账单编辑入口不能修改借出及本金收回流水。 */
     @ParameterizedTest
-    @ValueSource(strings = {"LEND", "REPAYMENT"})
+    @ValueSource(strings = {"BORROW", "LEND", "REPAYMENT"})
     void shouldRejectUpdatingLoanTransaction(String transactionType) {
         TransactionEntity transaction = effectiveTransaction();
         transaction.setTransactionType(transactionType);

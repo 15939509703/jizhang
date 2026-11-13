@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.lhj.jizhang.common.exception.BusinessException;
 import com.lhj.jizhang.common.exception.ErrorCodes;
 import com.lhj.jizhang.user.dto.LoanCreateInDTO;
+import com.lhj.jizhang.user.dto.BookAccessOutDTO;
 import com.lhj.jizhang.user.dto.LoanRepaymentInDTO;
 import com.lhj.jizhang.user.dto.LoanUpdateInDTO;
 import com.lhj.jizhang.user.entity.AccountEntity;
@@ -31,10 +32,10 @@ import org.springframework.transaction.annotation.AnnotationTransactionAttribute
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -94,17 +95,33 @@ class LoanServiceTest {
     }
 
     @Test
-    void borrowDoesNotChangeAccount() {
-        var result = service.create(7L, input("BORROW", null));
+    void borrowIncreasesSelectedAccountAndLinksTransaction() {
+        AccountEntity account = account();
+        when(accountMapper.selectByIdForUpdate(20L)).thenReturn(account);
+        when(bookMapper.selectById(1L)).thenReturn(book());
+        doAnswer(invocation -> {
+            invocation.<TransactionEntity>getArgument(0).setId(30L);
+            return 1;
+        }).when(transactionMapper).insert(any(TransactionEntity.class));
 
-        assertNull(result.relatedTransactionId());
-        verify(accountMapper, never()).selectByIdForUpdate(any());
-        verify(transactionMapper, never()).insert(any(TransactionEntity.class));
+        var result = service.create(7L, input("BORROW", 20L));
+
+        ArgumentCaptor<TransactionEntity> transaction = ArgumentCaptor.forClass(TransactionEntity.class);
+        ArgumentCaptor<AccountEntryEntity> entry = ArgumentCaptor.forClass(AccountEntryEntity.class);
+        verify(transactionMapper).insert(transaction.capture());
+        verify(accountEntryMapper).insert(entry.capture());
+        assertEquals("BORROW", transaction.getValue().getTransactionType());
+        assertEquals(30L, result.relatedTransactionId());
+        assertEquals(20L, result.accountId());
+        assertEquals(new BigDecimal("25.00"), entry.getValue().getSignedAmount());
+        assertEquals("INCREASE", entry.getValue().getEntryType());
+        assertEquals(new BigDecimal("125.00"), account.getCurrentBalance());
     }
 
     @Test
     void lendRequiresAccount() {
         assertThrows(BusinessException.class, () -> service.create(7L, input("LEND", null)));
+        assertThrows(BusinessException.class, () -> service.create(7L, input("BORROW", null)));
         verify(loanRecordMapper, never()).insert(any(LoanRecordEntity.class));
     }
 
@@ -179,6 +196,27 @@ class LoanServiceTest {
     }
 
     @Test
+    void changingBorrowAccountReversesOldCreditAndCreditsNewAccount() {
+        LoanRecordEntity loan = loan(20L);
+        loan.setLoanType("BORROW");
+        AccountEntity previous = account();
+        AccountEntity target = account();
+        target.setId(21L);
+        target.setCurrentBalance(new BigDecimal("50.00"));
+        TransactionEntity original = transaction();
+        original.setTransactionType("BORROW");
+        when(loanRecordMapper.selectByIdForUpdate(10L)).thenReturn(loan);
+        when(transactionMapper.selectByIdForUpdate(30L)).thenReturn(original);
+        when(accountMapper.selectByIdForUpdate(20L)).thenReturn(previous);
+        when(accountMapper.selectByIdForUpdate(21L)).thenReturn(target);
+
+        service.update(7L, 10L, update("25.00", 21L));
+
+        assertEquals(new BigDecimal("75.00"), previous.getCurrentBalance());
+        assertEquals(new BigDecimal("75.00"), target.getCurrentBalance());
+    }
+
+    @Test
     void editingLendWithoutMoneyChangeLeavesAccountUntouched() {
         LoanRecordEntity loan = loan(20L);
         TransactionEntity transaction = transaction();
@@ -220,6 +258,9 @@ class LoanServiceTest {
     void onlyReturnsActiveAccountsFromBook() {
         AccountEntity account = account();
         account.setName("现金");
+        when(bookAccessService.myAccess(7L, 1L)).thenReturn(new BookAccessOutDTO(1L, "MEMBER",
+                Map.of("MENU.LOANS", true), Map.of("ACTION.LOANS.MANAGE", false,
+                        "ACTION.LOANS.REPAY", true), "ALL", 0L));
         when(accountMapper.selectList(any(Wrapper.class))).thenReturn(java.util.List.of(account));
 
         var accounts = service.accounts(7L, 1L);
@@ -284,22 +325,42 @@ class LoanServiceTest {
         assertRepaymentLedger("20.00", "100.00", "120.00");
     }
 
-    /** 借入还款保持原行为，不触碰借出账户及其流水。 */
+    /** 借入还款从关联账户扣除本次本金。 */
     @Test
-    void borrowRepaymentDoesNotChangeAccountLedger() {
+    void borrowRepaymentDebitsLinkedAccount() {
         LoanRecordEntity loan = repaymentLoan();
         loan.setLoanType("BORROW");
-        loan.setAccountId(null);
-        loan.setRelatedTransactionId(null);
-        when(loanRecordMapper.selectByIdForUpdate(10L)).thenReturn(loan);
+        AccountEntity account = account();
+        prepareRepayment(loan, account);
 
         var result = service.repay(7L, 10L, repayment("10.00"));
 
         assertEquals(new BigDecimal("10.00"), result.repaidAmount());
         assertEquals("PARTIAL", result.status());
-        verify(accountMapper, never()).selectByIdForUpdate(any());
-        verify(transactionMapper, never()).insert(any(TransactionEntity.class));
-        verify(accountEntryMapper, never()).insert(any(AccountEntryEntity.class));
+        assertEquals(new BigDecimal("90.00"), account.getCurrentBalance());
+        ArgumentCaptor<AccountEntryEntity> entry = ArgumentCaptor.forClass(AccountEntryEntity.class);
+        verify(accountEntryMapper).insert(entry.capture());
+        assertEquals("DECREASE", entry.getValue().getEntryType());
+        assertEquals(new BigDecimal("-10.00"), entry.getValue().getSignedAmount());
+    }
+
+    @Test
+    void repaymentCanUseAnotherAccountWithoutChangingOriginalAccount() {
+        LoanRecordEntity loan = repaymentLoan();
+        AccountEntity original = account();
+        AccountEntity selected = account();
+        selected.setId(21L);
+        selected.setCurrentBalance(new BigDecimal("50.00"));
+        prepareRepayment(loan, original);
+        when(accountMapper.selectByIdForUpdate(21L)).thenReturn(selected);
+
+        service.repay(7L, 10L, new LoanRepaymentInDTO(new BigDecimal("10.00"), 21L, null));
+
+        assertEquals(new BigDecimal("100.00"), original.getCurrentBalance());
+        assertEquals(new BigDecimal("60.00"), selected.getCurrentBalance());
+        ArgumentCaptor<AccountEntryEntity> entry = ArgumentCaptor.forClass(AccountEntryEntity.class);
+        verify(accountEntryMapper).insert(entry.capture());
+        assertEquals(21L, entry.getValue().getAccountId());
     }
 
     /** 超额收回必须在任何资金写入前被拒绝。 */
@@ -333,7 +394,7 @@ class LoanServiceTest {
     @ValueSource(strings = {"0.00", "-1.00"})
     void invalidRepaymentAmountDoesNotWriteLedger(String amount) {
         when(loanRecordMapper.selectByIdForUpdate(10L)).thenReturn(repaymentLoan());
-        LoanRepaymentInDTO input = new LoanRepaymentInDTO(amount == null ? null : new BigDecimal(amount), null);
+        LoanRepaymentInDTO input = new LoanRepaymentInDTO(amount == null ? null : new BigDecimal(amount), null, null);
 
         assertThrows(BusinessException.class, () -> service.repay(7L, 10L, input));
 
@@ -522,6 +583,7 @@ class LoanServiceTest {
     /** 准备已锁定的原借出流水、关联账户及收回流水主键。 */
     private void prepareRepayment(LoanRecordEntity loan, AccountEntity account) {
         TransactionEntity original = transaction();
+        original.setTransactionType(loan.getLoanType());
         original.setCurrencyCode("CNY");
         original.setTitle("借出给张三");
         AtomicLong nextTransactionId = new AtomicLong(40L);
@@ -536,7 +598,7 @@ class LoanServiceTest {
 
     /** 构造本次收回金额与备注。 */
     private LoanRepaymentInDTO repayment(String amount) {
-        return new LoanRepaymentInDTO(new BigDecimal(amount), "微信已收款");
+        return new LoanRepaymentInDTO(new BigDecimal(amount), null, "微信已收款");
     }
 
     /** 验证本金收回流水及账户分录的关联、金额、币种和前后余额。 */

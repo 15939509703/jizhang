@@ -75,6 +75,22 @@ public class DataSecurityService {
     private final ObjectMapper objectMapper;
     private final Path backupRoot;
 
+    /**
+     * 初始化数据安全服务。
+     *
+     * @param backupMapper 数据访问器
+     * @param restoreMapper 数据访问器
+     * @param findingMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param categoryMapper 数据访问器
+     * @param accountMapper 数据访问器
+     * @param transactionMapper 数据访问器
+     * @param entryMapper 数据访问器
+     * @param accessService 关联服务
+     * @param transactionService 关联服务
+     * @param objectMapper 数据访问器
+     * @param backupDir 备份文件目录
+     */
     public DataSecurityService(BackupTaskMapper backupMapper, RestoreCheckMapper restoreMapper,
                                DuplicateFindingMapper findingMapper, BookMapper bookMapper,
                                CategoryMapper categoryMapper, AccountMapper accountMapper,
@@ -89,6 +105,13 @@ public class DataSecurityService {
         this.backupRoot = Path.of(backupDir).toAbsolutePath().normalize();
     }
 
+    /**
+     * 查询账本的备份任务列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 数据安全列表
+     */
     public List<BackupTaskOutDTO> backups(Long userId, Long bookId) {
         accessService.requireLedgerFileAccess(userId, bookId);
         accessService.requireAction(userId, bookId, BookAction.DATA_SECURITY_BACKUP);
@@ -97,6 +120,13 @@ public class DataSecurityService {
                 .stream().map(this::backupOutput).toList();
     }
 
+    /**
+     * 创建并保存加密账本备份。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 备份任务输出对象
+     */
     @Transactional
     public BackupTaskOutDTO createBackup(Long userId, Long bookId) {
         accessService.requireLedgerFileAccess(userId, bookId);
@@ -119,6 +149,13 @@ public class DataSecurityService {
         return backupOutput(task);
     }
 
+    /**
+     * 下载加密备份文件。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 加密备份文件
+     */
     public BackupFile download(Long userId, Long id) {
         BackupTaskEntity task = requireBackup(userId, id);
         try {
@@ -130,6 +167,13 @@ public class DataSecurityService {
         }
     }
 
+    /**
+     * 检查备份恢复时的新增、跳过和冲突记录。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 恢复检查输出对象
+     */
     @Transactional
     public RestoreCheckOutDTO checkRestore(Long userId, Long id) {
         BackupTaskEntity task = requireBackup(userId, id);
@@ -153,6 +197,13 @@ public class DataSecurityService {
         return restoreOutput(check);
     }
 
+    /**
+     * 按恢复检查结果导入备份数据。
+     *
+     * @param userId 用户ID
+     * @param checkId 恢复检查ID
+     * @return 恢复检查输出对象
+     */
     @Transactional
     public RestoreCheckOutDTO restore(Long userId, Long checkId) {
         RestoreCheckEntity check = restoreMapper.selectById(checkId);
@@ -188,6 +239,13 @@ public class DataSecurityService {
         return restoreOutput(check);
     }
 
+    /**
+     * 查询账本内的重复项发现。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 数据安全列表
+     */
     public List<DuplicateFindingOutDTO> findings(Long userId, Long bookId) {
         accessService.requireMenu(userId, bookId, BookMenu.DATA_SECURITY);
         accessService.requirePermission(userId, bookId, BookPermission.VIEW_TRANSACTIONS);
@@ -196,6 +254,13 @@ public class DataSecurityService {
         return findingOutputs(rows);
     }
 
+    /**
+     * 扫描账本内可能重复的账单。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 数据安全列表
+     */
     @Transactional
     public List<DuplicateFindingOutDTO> scanDuplicates(Long userId, Long bookId) {
         accessService.requirePermission(userId, bookId, BookPermission.VIEW_TRANSACTIONS);
@@ -225,6 +290,14 @@ public class DataSecurityService {
         return findings(userId, bookId);
     }
 
+    /**
+     * 确认或忽略一条重复账单发现。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @param confirmDuplicate 是否启用
+     * @return 数据安全输出对象
+     */
     @Transactional
     public DuplicateFindingOutDTO handleFinding(Long userId, Long id, boolean confirmDuplicate) {
         DuplicateFindingEntity finding = findingMapper.selectById(id);
@@ -240,6 +313,12 @@ public class DataSecurityService {
         return findingOutputs(List.of(finding)).get(0);
     }
 
+    /**
+     * 收集账本备份所需的业务数据。
+     *
+     * @param bookId 账本ID
+     * @return 账本备份数据
+     */
     private BackupPayload payload(Long bookId) {
         BookEntity book = bookMapper.selectById(bookId);
         List<CategoryEntity> categories = categoryMapper.selectList(Wrappers.<CategoryEntity>lambdaQuery().eq(CategoryEntity::getBookId, bookId));
@@ -254,6 +333,12 @@ public class DataSecurityService {
         return new BackupPayload(FORMAT_VERSION, book, categories, accounts, items);
     }
 
+    /**
+     * 读取并解密备份文件中的业务数据。
+     *
+     * @param task 任务实体
+     * @return 账本备份数据
+     */
     private BackupPayload readPayload(BackupTaskEntity task) {
         try {
             byte[] file = Files.readAllBytes(resolveFile(task));
@@ -266,6 +351,12 @@ public class DataSecurityService {
         }
     }
 
+    /**
+     * 加密备份内容。
+     *
+     * @param plain 待加密明文字节
+     * @return 文件字节
+     */
     private byte[] encrypt(byte[] plain) throws Exception {
         byte[] nonce = new byte[12]; new SecureRandom().nextBytes(nonce);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -275,6 +366,12 @@ public class DataSecurityService {
         return output;
     }
 
+    /**
+     * 解密备份内容。
+     *
+     * @param input 请求参数
+     * @return 文件字节
+     */
     private byte[] decrypt(byte[] input) throws Exception {
         if (input.length < 28) throw new IOException("short");
         byte[] nonce = java.util.Arrays.copyOfRange(input, 0, 12);
@@ -283,6 +380,11 @@ public class DataSecurityService {
         return cipher.doFinal(input, 12, input.length - 12);
     }
 
+    /**
+     * 读取数据备份加密密钥。
+     *
+     * @return 备份加密密钥
+     */
     private SecretKey backupKey() throws Exception {
         Files.createDirectories(backupRoot);
         Path keyPath = backupRoot.resolve(".backup.key");
@@ -294,6 +396,13 @@ public class DataSecurityService {
         return new SecretKeySpec(Files.readAllBytes(keyPath), "AES");
     }
 
+    /**
+     * 查询并校验备份。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 数据安全实体
+     */
     private BackupTaskEntity requireBackup(Long userId, Long id) {
         BackupTaskEntity task = backupMapper.selectById(id);
         if (task == null || !userId.equals(task.getUserId()) || !"SUCCESS".equals(task.getTaskStatus()))
@@ -303,23 +412,73 @@ public class DataSecurityService {
         return task;
     }
 
+    /**
+     * 解析备份文件的本地路径。
+     *
+     * @param task 任务实体
+     * @return 文件路径
+     */
     private Path resolveFile(BackupTaskEntity task) {
         Path path = backupRoot.resolve(task.getFilePath()).normalize();
         if (!path.startsWith(backupRoot)) throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "备份路径无效");
         return path;
     }
 
+    /**
+     * 判断两条账单是否构成重复项。
+     *
+     * @param a 第一条账单
+     * @param b 第二条账单
+     * @return 条件是否成立
+     */
     private boolean same(TransactionEntity a, TransactionEntity b) {
         return a.getTransactionType().equals(b.getTransactionType()) && a.getAmount().compareTo(b.getAmount()) == 0;
     }
+    /**
+     * 生成备份恢复时的幂等请求ID。
+     *
+     * @param item 当前明细
+     * @return 处理后的文本
+     */
     private String restoreRequestId(TransactionEntity item) { return "RESTORE_" + item.getTransactionNo(); }
+    /**
+     * 从账户流水中提取指定类型的账户ID。
+     *
+     * @param entries 流水集合
+     * @param type 类型
+     * @return 匹配的账户ID
+     */
     private Long entryAccount(List<AccountEntryEntity> entries, String type) {
         return entries.stream().filter(entry -> type.equals(entry.getEntryType())).map(AccountEntryEntity::getAccountId)
                 .findFirst().orElseThrow(() -> new BusinessException(ErrorCodes.INVALID_PARAMETER, "备份账单分录不完整"));
     }
+    /**
+     * 规范化输入文本。
+     *
+     * @param value 原始值
+     * @return 处理后的文本
+     */
     private String normalize(String value) { return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT); }
+    /**
+     * 计算内容摘要。
+     *
+     * @param bytes 文件字节
+     * @return 处理后的文本
+     */
     private String sha256(byte[] bytes) throws Exception { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
+    /**
+     * 将备份任务转换为输出对象。
+     *
+     * @param item 当前明细
+     * @return 备份任务输出对象
+     */
     private BackupTaskOutDTO backupOutput(BackupTaskEntity item) { return new BackupTaskOutDTO(item.getId(), item.getTaskNo(), item.getBookId(), item.getTaskStatus(), item.getChecksum(), item.getFormatVersion(), item.getCreatedTime() == null ? null : item.getCreatedTime().toInstant(ZoneOffset.UTC), item.getExpiredTime() == null ? null : item.getExpiredTime().toInstant(ZoneOffset.UTC)); }
+    /**
+     * 将恢复检查转换为输出对象。
+     *
+     * @param item 当前明细
+     * @return 恢复检查输出对象
+     */
     private RestoreCheckOutDTO restoreOutput(RestoreCheckEntity item) { return new RestoreCheckOutDTO(item.getId(), item.getBackupId(), item.getAddedCount(), item.getSkippedCount(), item.getConflictCount(), item.getStatus()); }
     /** 批量读取候选账单和分类，避免每条重复记录单独查询。 */
     private List<DuplicateFindingOutDTO> findingOutputs(List<DuplicateFindingEntity> findings) {

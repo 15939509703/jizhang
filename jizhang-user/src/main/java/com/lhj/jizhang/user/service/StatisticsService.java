@@ -43,6 +43,14 @@ public class StatisticsService {
     private final BookMapper bookMapper;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化统计数据服务。
+     *
+     * @param statisticsMapper 数据访问器
+     * @param transactionMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param bookAccessService 关联服务
+     */
     public StatisticsService(StatisticsMapper statisticsMapper, TransactionMapper transactionMapper,
                              BookMapper bookMapper, BookAccessService bookAccessService) {
         this.statisticsMapper = statisticsMapper;
@@ -51,6 +59,16 @@ public class StatisticsService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 汇总统计仪表盘数据。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param month 目标月份
+     * @param year 目标年份
+     * @param weekStart 日期
+     * @return 统计数据输出对象
+     */
     public StatisticsDashboardOutDTO dashboard(Long userId, Long bookId, YearMonth month, Integer year,
                                                LocalDate weekStart) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.REPORTS);
@@ -101,6 +119,13 @@ public class StatisticsService {
         return new BillOverviewOutDTO(book.getCurrencyCode(), targetYear, years, annualTrend(bookId, zone, targetYear));
     }
 
+    /**
+     * 汇总统计数据。
+     *
+     * @param bookId 账本ID
+     * @param range 时间范围
+     * @return 统计数据输出对象
+     */
     private StatisticsSummaryOutDTO summary(Long bookId, Range range) {
         TransactionSummaryAggregate aggregate = transactionMapper.selectSummary(bookId, range.startAt(), range.endAt());
         BigDecimal income = valueOrZero(aggregate == null ? null : aggregate.getIncomeAmount());
@@ -108,16 +133,41 @@ public class StatisticsService {
         return new StatisticsSummaryOutDTO(income, expense, income.subtract(expense));
     }
 
+    /**
+     * 统计每日收支趋势。
+     *
+     * @param bookId 账本ID
+     * @param zone 账本时区
+     * @param days 统计天数
+     * @return 统计数据列表
+     */
     private List<StatisticsTrendOutDTO> dailyTrend(Long bookId, ZoneId zone, int days) {
         LocalDate end = LocalDate.now(zone).plusDays(1);
         LocalDate start = end.minusDays(days);
         return dailyTrend(bookId, zone, start, days);
     }
 
+    /**
+     * 统计月度收支趋势。
+     *
+     * @param bookId 账本ID
+     * @param zone 账本时区
+     * @param month 目标月份
+     * @return 统计数据列表
+     */
     private List<StatisticsTrendOutDTO> monthlyTrend(Long bookId, ZoneId zone, YearMonth month) {
         return dailyTrend(bookId, zone, month.atDay(1), month.lengthOfMonth());
     }
 
+    /**
+     * 统计每日收支趋势。
+     *
+     * @param bookId 账本ID
+     * @param zone 账本时区
+     * @param start 起始时间
+     * @param days 统计天数
+     * @return 统计数据列表
+     */
     private List<StatisticsTrendOutDTO> dailyTrend(Long bookId, ZoneId zone, LocalDate start, int days) {
         LocalDate end = start.plusDays(days);
         Range range = range(start.atStartOfDay(zone), end.atStartOfDay(zone));
@@ -132,6 +182,14 @@ public class StatisticsService {
         return result;
     }
 
+    /**
+     * 统计年度收支趋势。
+     *
+     * @param bookId 账本ID
+     * @param zone 账本时区
+     * @param year 目标年份
+     * @return 统计数据列表
+     */
     private List<StatisticsTrendOutDTO> annualTrend(Long bookId, ZoneId zone, int year) {
         ZonedDateTime start = Year.of(year).atDay(1).atStartOfDay(zone);
         ZonedDateTime end = start.plusYears(1);
@@ -148,6 +206,14 @@ public class StatisticsService {
         return result;
     }
 
+    /**
+     * 统计分类收支占比。
+     *
+     * @param bookId 账本ID
+     * @param type 类型
+     * @param range 时间范围
+     * @return 统计数据列表
+     */
     private List<StatisticsBreakdownOutDTO> categories(Long bookId, String type, Range range) {
         List<StatisticsBreakdownAggregate> rows = statisticsMapper.selectCategoryBreakdown(bookId, type,
                 range.startAt(), range.endAt());
@@ -163,6 +229,13 @@ public class StatisticsService {
         }).toList();
     }
 
+    /**
+     * 统计账户收支占比。
+     *
+     * @param bookId 账本ID
+     * @param range 时间范围
+     * @return 统计数据列表
+     */
     private List<StatisticsBreakdownOutDTO> accounts(Long bookId, Range range) {
         List<StatisticsBreakdownAggregate> rows = statisticsMapper.selectAccountBreakdown(bookId,
                 range.startAt(), range.endAt());
@@ -172,10 +245,23 @@ public class StatisticsService {
                 percent(totalActivity(row), total))).toList();
     }
 
+    /**
+     * 计算账户总收支额。
+     *
+     * @param row 当前数据行
+     * @return 计算后的金额
+     */
     private BigDecimal totalActivity(StatisticsBreakdownAggregate row) {
         return valueOrZero(row.getIncomeAmount()).add(valueOrZero(row.getExpenseAmount()));
     }
 
+    /**
+     * 计算金额占总额的整数百分比。
+     *
+     * @param amount 金额
+     * @param total 金额
+     * @return 整数百分比
+     */
     private int percent(BigDecimal amount, BigDecimal total) {
         if (total.compareTo(BigDecimal.ZERO) == 0) {
             return 0;
@@ -183,36 +269,89 @@ public class StatisticsService {
         return amount.multiply(new BigDecimal("100")).divide(total, 0, RoundingMode.HALF_UP).intValue();
     }
 
+    /**
+     * 读取统计周期收入金额。
+     *
+     * @param item 当前明细
+     * @return 计算后的金额
+     */
     private BigDecimal income(StatisticsPeriodAggregate item) {
         return valueOrZero(item == null ? null : item.getIncomeAmount());
     }
 
+    /**
+     * 读取统计周期支出金额。
+     *
+     * @param item 当前明细
+     * @return 计算后的金额
+     */
     private BigDecimal expense(StatisticsPeriodAggregate item) {
         return valueOrZero(item == null ? null : item.getExpenseAmount());
     }
 
+    /**
+     * 计算自然月在账本时区内的时间范围。
+     *
+     * @param month 目标月份
+     * @param zone 账本时区
+     * @return 时间范围
+     */
     private Range monthRange(YearMonth month, ZoneId zone) {
         return range(month.atDay(1).atStartOfDay(zone), month.plusMonths(1).atDay(1).atStartOfDay(zone));
     }
 
+    /**
+     * 计算自然年在账本时区内的时间范围。
+     *
+     * @param year 目标年份
+     * @param zone 账本时区
+     * @return 时间范围
+     */
     private Range yearRange(int year, ZoneId zone) {
         ZonedDateTime start = Year.of(year).atDay(1).atStartOfDay(zone);
         return range(start, start.plusYears(1));
     }
 
+    /**
+     * 计算自然日在账本时区内的时间范围。
+     *
+     * @param date 目标日期
+     * @param zone 账本时区
+     * @return 时间范围
+     */
     private Range dayRange(LocalDate date, ZoneId zone) {
         return range(date.atStartOfDay(zone), date.plusDays(1).atStartOfDay(zone));
     }
 
+    /**
+     * 转换统计起止时间范围。
+     *
+     * @param start 起始时间
+     * @param end 结束时间
+     * @return 时间范围
+     */
     private Range range(ZonedDateTime start, ZonedDateTime end) {
         return new Range(toUtc(start), toUtc(end));
     }
 
+    /**
+     * 获取指定日期的时区偏移量。
+     *
+     * @param zone 账本时区
+     * @param date 目标日期
+     * @return 处理后的文本
+     */
     private String offset(ZoneId zone, LocalDate date) {
         ZoneOffset offset = zone.getRules().getOffset(date.atStartOfDay(zone).toInstant());
         return "Z".equals(offset.getId()) ? "+00:00" : offset.getId();
     }
 
+    /**
+     * 校验年份。
+     *
+     * @param year 目标年份
+     * @return 有效年份
+     */
     private int validateYear(Integer year) {
         if (year < 2000 || year > 2100) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "统计年份必须在2000到2100之间");
@@ -220,6 +359,12 @@ public class StatisticsService {
         return year;
     }
 
+    /**
+     * 查询并校验账本存在。
+     *
+     * @param bookId 账本ID
+     * @return 统计数据实体
+     */
     private BookEntity requireBook(Long bookId) {
         BookEntity book = bookMapper.selectById(bookId);
         if (book == null || book.getStatus() == null || book.getStatus() == 0) {
@@ -228,10 +373,22 @@ public class StatisticsService {
         return book;
     }
 
+    /**
+     * 将时间转换为 UTC 时间。
+     *
+     * @param dateTime 待转换时间
+     * @return 转换后的时间
+     */
     private LocalDateTime toUtc(ZonedDateTime dateTime) {
         return LocalDateTime.ofInstant(dateTime.toInstant(), ZoneOffset.UTC);
     }
 
+    /**
+     * 将空金额转换为零。
+     *
+     * @param value 原始值
+     * @return 计算后的金额
+     */
     private BigDecimal valueOrZero(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }

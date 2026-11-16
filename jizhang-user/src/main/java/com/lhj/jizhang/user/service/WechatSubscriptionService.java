@@ -40,6 +40,17 @@ public class WechatSubscriptionService {
     private final ObjectMapper objectMapper;
     private final BookAccessService accessService;
 
+    /**
+     * 初始化微信订阅通知服务。
+     *
+     * @param subscriptionMapper 数据访问器
+     * @param outboxMapper 数据访问器
+     * @param authMapper 数据访问器
+     * @param client 通知客户端
+     * @param properties 配置属性
+     * @param objectMapper 数据访问器
+     * @param accessService 关联服务
+     */
     public WechatSubscriptionService(WechatSubscriptionMapper subscriptionMapper,
                                      NotificationOutboxMapper outboxMapper, UserAuthMapper authMapper,
                                      WechatNotificationClient client, WechatNotificationProperties properties,
@@ -49,10 +60,23 @@ public class WechatSubscriptionService {
         this.accessService = accessService;
     }
 
+    /**
+     * 查询用户的订阅通知设置。
+     *
+     * @param userId 用户ID
+     * @return 微信订阅通知列表
+     */
     public List<WechatSubscriptionOutDTO> settings(Long userId) {
         return SCENES.stream().map(scene -> output(find(userId, scene), scene)).toList();
     }
 
+    /**
+     * 更新用户的订阅通知设置。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 微信订阅通知输出对象
+     */
     @Transactional
     public WechatSubscriptionOutDTO update(Long userId, WechatSubscriptionInDTO input) {
         WechatSubscriptionEntity entity = find(userId, input.scene());
@@ -91,6 +115,9 @@ public class WechatSubscriptionService {
         catch (Exception exception) { throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "通知任务创建失败"); }
     }
 
+    /**
+     * 发送已到期的微信订阅通知。
+     */
     @Scheduled(fixedDelayString = "${app.wechat.notification.scan-interval-ms:60000}")
     public void sendDue() {
         if (!properties.enabled()) return;
@@ -102,6 +129,11 @@ public class WechatSubscriptionService {
         for (NotificationOutboxEntity item : items) sendOne(item);
     }
 
+    /**
+     * 发送一条微信订阅通知并更新状态。
+     *
+     * @param item 当前明细
+     */
     @Transactional
     protected void sendOne(NotificationOutboxEntity item) {
         if (!hasContentAccess(item.getUserId(), item.getBookId(), item.getScene())) {
@@ -147,6 +179,13 @@ public class WechatSubscriptionService {
         }
     }
 
+    /**
+     * 记录通知发送失败并确定重试状态。
+     *
+     * @param item 当前明细
+     * @param code 错误码或业务代码
+     * @param retryable 是否启用
+     */
     private void fail(NotificationOutboxEntity item, String code, boolean retryable) {
         int retries = item.getRetryCount() + 1; item.setRetryCount(retries); item.setFailureCode(code);
         if (retryable && retries < 3) {
@@ -157,14 +196,34 @@ public class WechatSubscriptionService {
                 item.getId(), item.getScene(), code, retries, item.getStatus());
     }
 
+    /**
+     * 查询用户指定场景的订阅设置。
+     *
+     * @param userId 用户ID
+     * @param scene 通知场景
+     * @return 微信订阅通知实体
+     */
     private WechatSubscriptionEntity find(Long userId, String scene) {
         return subscriptionMapper.selectOne(Wrappers.<WechatSubscriptionEntity>lambdaQuery()
                 .eq(WechatSubscriptionEntity::getUserId, userId).eq(WechatSubscriptionEntity::getScene, scene));
     }
+    /**
+     * 转换为微信订阅通知输出对象。
+     *
+     * @param entity 业务实体
+     * @param scene 通知场景
+     * @return 微信订阅通知输出对象
+     */
     private WechatSubscriptionOutDTO output(WechatSubscriptionEntity entity, String scene) {
         return new WechatSubscriptionOutDTO(scene, entity != null && entity.getEnabledFlag() == 1,
                 entity == null ? 0 : entity.getAuthorizedCount(), template(scene), properties.enabled());
     }
+    /**
+     * 选择通知场景对应的模板。
+     *
+     * @param scene 通知场景
+     * @return 处理后的文本
+     */
     private String template(String scene) { return "RECURRING_PENDING".equals(scene)
             ? properties.recurringTemplateId() : properties.budgetTemplateId(); }
 }

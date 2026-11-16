@@ -27,6 +27,13 @@ public class BookMemberService {
     private final UserMapper userMapper;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化账本成员服务。
+     *
+     * @param bookMemberMapper 数据访问器
+     * @param userMapper 数据访问器
+     * @param bookAccessService 关联服务
+     */
     public BookMemberService(BookMemberMapper bookMemberMapper, UserMapper userMapper,
                              BookAccessService bookAccessService) {
         this.bookMemberMapper = bookMemberMapper;
@@ -34,6 +41,13 @@ public class BookMemberService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 查询账本成员列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 账本成员列表
+     */
     public List<BookMemberOutDTO> list(Long userId, Long bookId) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.FAMILY_SHARING);
         List<BookMemberEntity> members = bookMemberMapper.selectList(Wrappers.<BookMemberEntity>lambdaQuery()
@@ -45,6 +59,14 @@ public class BookMemberService {
         return members.stream().map(member -> toOutput(member, users.get(member.getUserId()))).toList();
     }
 
+    /**
+     * 邀请账本成员。
+     *
+     * @param actorId 操作人ID
+     * @param bookId 账本ID
+     * @param input 请求参数
+     * @return 账本成员输出对象
+     */
     @Transactional
     public BookMemberOutDTO invite(Long actorId, Long bookId, BookMemberInviteInDTO input) {
         bookAccessService.requireAdmin(actorId, bookId);
@@ -52,6 +74,15 @@ public class BookMemberService {
         throw upgradeRequired();
     }
 
+    /**
+     * 更新角色。
+     *
+     * @param actorId 操作人ID
+     * @param bookId 账本ID
+     * @param memberId 成员ID
+     * @param input 请求参数
+     * @return 账本成员输出对象
+     */
     @Transactional
     public BookMemberOutDTO updateRole(Long actorId, Long bookId, Long memberId, BookMemberRoleInDTO input) {
         bookAccessService.requireAdmin(actorId, bookId);
@@ -59,6 +90,13 @@ public class BookMemberService {
         throw upgradeRequired();
     }
 
+    /**
+     * 删除账本成员。
+     *
+     * @param actorId 操作人ID
+     * @param bookId 账本ID
+     * @param memberId 成员ID
+     */
     @Transactional
     public void remove(Long actorId, Long bookId, Long memberId) {
         BookMemberEntity actor = bookAccessService.requireAdmin(actorId, bookId);
@@ -72,6 +110,13 @@ public class BookMemberService {
         }
     }
 
+    /**
+     * 校验操作者能否设置目标成员角色。
+     *
+     * @param actor 操作人成员实体
+     * @param nextRole 待设置的成员角色
+     * @param target 目标成员实体
+     */
     private void validateManagedRole(BookMemberEntity actor, String nextRole, BookMemberEntity target) {
         if (target != null && "OWNER".equals(target.getRole())) {
             throw new BusinessException(ErrorCodes.MEMBER_INVALID, "不能修改账本所有者");
@@ -82,6 +127,13 @@ public class BookMemberService {
         }
     }
 
+    /**
+     * 查询并校验可管理的账本成员。
+     *
+     * @param bookId 账本ID
+     * @param memberId 成员ID
+     * @return 账本成员实体
+     */
     private BookMemberEntity requireManagedMember(Long bookId, Long memberId) {
         BookMemberEntity member = bookMemberMapper.selectById(memberId);
         if (member == null || !bookId.equals(member.getBookId()) || !Integer.valueOf(1).equals(member.getStatus())) {
@@ -96,6 +148,13 @@ public class BookMemberService {
                 org.springframework.http.HttpStatus.CONFLICT);
     }
 
+    /**
+     * 转换为账本成员输出对象。
+     *
+     * @param member 成员实体
+     * @param user 用户实体
+     * @return 账本成员输出对象
+     */
     private BookMemberOutDTO toOutput(BookMemberEntity member, UserEntity user) {
         return new BookMemberOutDTO(member.getId(), member.getUserId(), user.getUserNo(), user.getNickName(),
                 user.getAvatarUrl(), member.getRole(), member.getStatus());

@@ -21,6 +21,12 @@ public class PhoneBindingService {
     private final UserAuthMapper userAuthMapper;
     private final PasswordCredentialService credentialService;
 
+    /**
+     * 初始化手机号绑定服务。
+     *
+     * @param userAuthMapper 数据访问器
+     * @param credentialService 关联服务
+     */
     public PhoneBindingService(UserAuthMapper userAuthMapper, PasswordCredentialService credentialService) {
         this.userAuthMapper = userAuthMapper;
         this.credentialService = credentialService;
@@ -105,12 +111,24 @@ public class PhoneBindingService {
         }
     }
 
+    /**
+     * 查询手机号认证信息。
+     *
+     * @param phone 手机号
+     * @return 用户认证关系实体
+     */
     private UserAuthEntity findPhoneAuth(String phone) {
         return userAuthMapper.selectOne(Wrappers.<UserAuthEntity>lambdaQuery()
                 .eq(UserAuthEntity::getProvider, PHONE_PROVIDER)
                 .eq(UserAuthEntity::getOpenid, phone));
     }
 
+    /**
+     * 查询当前手机号认证信息。
+     *
+     * @param userId 用户ID
+     * @return 用户认证关系实体
+     */
     private UserAuthEntity findCurrentPhoneAuth(Long userId) {
         return userAuthMapper.selectOne(Wrappers.<UserAuthEntity>lambdaQuery()
                 .eq(UserAuthEntity::getUserId, userId)
@@ -120,6 +138,13 @@ public class PhoneBindingService {
                 .last("LIMIT 1"));
     }
 
+    /**
+     * 构建手机号认证关系。
+     *
+     * @param userId 用户ID
+     * @param phone 手机号
+     * @return 用户认证关系实体
+     */
     private UserAuthEntity newPhoneAuth(Long userId, String phone) {
         UserAuthEntity phoneAuth = new UserAuthEntity();
         phoneAuth.setUserId(userId);
@@ -132,6 +157,11 @@ public class PhoneBindingService {
         return phoneAuth;
     }
 
+    /**
+     * 构建手机号绑定业务异常。
+     *
+     * @return 对应业务异常
+     */
     private BusinessException phoneAlreadyRegistered() {
         return new BusinessException(
                 ErrorCodes.PHONE_ALREADY_REGISTERED,

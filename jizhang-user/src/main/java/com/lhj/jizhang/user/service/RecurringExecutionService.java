@@ -45,6 +45,16 @@ public class RecurringExecutionService {
     private final BookAccessService bookAccessService;
     private WechatSubscriptionService subscriptionService;
 
+    /**
+     * 初始化重复规则执行服务。
+     *
+     * @param executionMapper 数据访问器
+     * @param ruleMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param ruleService 关联服务
+     * @param transactionService 关联服务
+     * @param bookAccessService 关联服务
+     */
     public RecurringExecutionService(
             RecurringExecutionMapper executionMapper,
             RecurringRuleMapper ruleMapper,
@@ -61,11 +71,25 @@ public class RecurringExecutionService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 设置重复规则通知服务。
+     *
+     * @param subscriptionService 关联服务
+     */
     @Autowired(required = false)
     void setSubscriptionService(WechatSubscriptionService subscriptionService) {
         this.subscriptionService = subscriptionService;
     }
 
+    /**
+     * 查询重复规则执行列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param status 状态
+     * @param limit 分页条数
+     * @return 重复规则执行列表
+     */
     public List<RecurringExecutionOutDTO> list(Long userId, Long bookId, String status, Integer limit) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.RECURRING);
         int pageSize = limit == null ? 50 : limit;
@@ -90,6 +114,13 @@ public class RecurringExecutionService {
                 .map(item -> ruleService.toExecution(item, ruleMap.get(item.getRuleId()))).toList();
     }
 
+    /**
+     * 统计账本中待确认的重复规则执行数。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 待确认执行记录数
+     */
     public long pendingCount(Long userId, Long bookId) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.RECURRING);
         List<Long> ruleIds = ruleMapper.selectList(Wrappers.<RecurringRuleEntity>lambdaQuery()
@@ -105,6 +136,13 @@ public class RecurringExecutionService {
                 .eq(RecurringExecutionEntity::getExecutionStatus, "PENDING"));
     }
 
+    /**
+     * 查询重复规则执行。
+     *
+     * @param userId 用户ID
+     * @param executionId 执行记录ID
+     * @return 重复规则执行输出对象
+     */
     public RecurringExecutionOutDTO get(Long userId, Long executionId) {
         RecurringExecutionEntity execution = executionMapper.selectById(executionId);
         if (execution == null) {
@@ -115,6 +153,13 @@ public class RecurringExecutionService {
         return ruleService.toExecution(execution, rule);
     }
 
+    /**
+     * 处理指定日期到期的重复规则。
+     *
+     * @param ruleId 规则ID
+     * @param scheduledDate 计划执行日期
+     * @return 重复规则执行输出对象
+     */
     @Transactional
     public RecurringExecutionOutDTO processScheduled(Long ruleId, LocalDate scheduledDate) {
         RecurringRuleEntity rule = ruleMapper.selectByIdForUpdate(ruleId);
@@ -136,6 +181,13 @@ public class RecurringExecutionService {
         return ruleService.toExecution(execution, rule);
     }
 
+    /**
+     * 立即执行一条重复规则。
+     *
+     * @param userId 用户ID
+     * @param ruleId 规则ID
+     * @return 重复规则执行输出对象
+     */
     @Transactional
     public RecurringExecutionOutDTO executeNow(Long userId, Long ruleId) {
         RecurringRuleEntity rule = ruleMapper.selectByIdForUpdate(ruleId);
@@ -147,6 +199,14 @@ public class RecurringExecutionService {
         return processScheduled(ruleId, rule.getNextExecutionDate());
     }
 
+    /**
+     * 确认重复规则执行。
+     *
+     * @param userId 用户ID
+     * @param executionId 执行记录ID
+     * @param input 请求参数
+     * @return 重复规则执行输出对象
+     */
     @Transactional
     public RecurringExecutionOutDTO confirm(Long userId, Long executionId, RecurringConfirmInDTO input) {
         RecurringExecutionEntity execution = requireExecutionForUpdate(executionId);
@@ -163,6 +223,13 @@ public class RecurringExecutionService {
         return ruleService.toExecution(execution, rule);
     }
 
+    /**
+     * 跳过重复规则执行。
+     *
+     * @param userId 用户ID
+     * @param executionId 执行记录ID
+     * @return 重复规则执行输出对象
+     */
     @Transactional
     public RecurringExecutionOutDTO skip(Long userId, Long executionId) {
         RecurringExecutionEntity execution = requireExecutionForUpdate(executionId);
@@ -179,6 +246,13 @@ public class RecurringExecutionService {
         return ruleService.toExecution(execution, rule);
     }
 
+    /**
+     * 重试重复规则执行。
+     *
+     * @param userId 用户ID
+     * @param executionId 执行记录ID
+     * @return 重复规则执行输出对象
+     */
     @Transactional
     public RecurringExecutionOutDTO retry(Long userId, Long executionId) {
         RecurringExecutionEntity execution = requireExecutionForUpdate(executionId);
@@ -196,6 +270,13 @@ public class RecurringExecutionService {
         return ruleService.toExecution(execution, rule);
     }
 
+    /**
+     * 记录规则执行失败并更新状态。
+     *
+     * @param ruleId 规则ID
+     * @param scheduledDate 计划执行日期
+     * @param exception 失败异常
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordFailure(Long ruleId, LocalDate scheduledDate, RuntimeException exception) {
         RecurringRuleEntity rule = ruleMapper.selectByIdForUpdate(ruleId);
@@ -225,11 +306,25 @@ public class RecurringExecutionService {
         ruleMapper.updateById(rule);
     }
 
+    /**
+     * 判断规则在指定日期是否可以执行。
+     *
+     * @param rule 规则实体
+     * @param scheduledDate 计划执行日期
+     * @return 条件是否成立
+     */
     private boolean canProcess(RecurringRuleEntity rule, LocalDate scheduledDate) {
         return rule != null && rule.getDeletedFlag() == 0 && "ACTIVE".equals(rule.getStatus())
                 && scheduledDate != null && scheduledDate.equals(rule.getNextExecutionDate());
     }
 
+    /**
+     * 创建执行记录。
+     *
+     * @param rule 规则实体
+     * @param scheduledDate 计划执行日期
+     * @return 重复规则执行实体
+     */
     private RecurringExecutionEntity createExecution(RecurringRuleEntity rule, LocalDate scheduledDate) {
         RecurringExecutionEntity execution = newExecution(rule, scheduledDate,
                 "CONFIRM".equals(rule.getExecutionMode()) ? "PENDING" : "PROCESSING");
@@ -245,11 +340,26 @@ public class RecurringExecutionService {
         return execution;
     }
 
+    /**
+     * 截断超出长度限制的执行提示。
+     *
+     * @param value 原始值
+     * @param max 最大长度
+     * @return 处理后的文本
+     */
     private String crop(String value, int max) {
         if (value == null) return "";
         return value.length() <= max ? value : value.substring(0, max);
     }
 
+    /**
+     * 构建重复规则执行记录。
+     *
+     * @param rule 规则实体
+     * @param scheduledDate 计划执行日期
+     * @param status 状态
+     * @return 重复规则执行实体
+     */
     private RecurringExecutionEntity newExecution(RecurringRuleEntity rule, LocalDate scheduledDate, String status) {
         RecurringExecutionEntity execution = new RecurringExecutionEntity();
         execution.setRuleId(rule.getId());
@@ -260,6 +370,13 @@ public class RecurringExecutionService {
         return execution;
     }
 
+    /**
+     * 根据重复规则执行记录创建账单。
+     *
+     * @param rule 规则实体
+     * @param execution 执行记录实体
+     * @param override 业务数据
+     */
     private void createTransaction(
             RecurringRuleEntity rule,
             RecurringExecutionEntity execution,
@@ -274,6 +391,14 @@ public class RecurringExecutionService {
         executionMapper.updateById(execution);
     }
 
+    /**
+     * 根据执行记录生成账单创建参数。
+     *
+     * @param rule 规则实体
+     * @param execution 执行记录实体
+     * @param override 业务数据
+     * @return 重复规则执行请求参数
+     */
     private TransactionCreateInDTO transactionCommand(
             RecurringRuleEntity rule,
             RecurringExecutionEntity execution,
@@ -292,6 +417,14 @@ public class RecurringExecutionService {
                 override != null && override.note() != null ? override.note() : rule.getNote());
     }
 
+    /**
+     * 读取确认参数，缺失时使用默认值。
+     *
+     * @param override 业务数据
+     * @param getter 字段取值函数
+     * @param fallback 默认值
+     * @return 重复规则执行结果
+     */
     private <T> T value(RecurringConfirmInDTO override,
                         Function<RecurringConfirmInDTO, T> getter, T fallback) {
         if (override == null) {
@@ -301,10 +434,25 @@ public class RecurringExecutionService {
         return value == null ? fallback : value;
     }
 
+    /**
+     * 读取非空文本，缺失时使用默认值。
+     *
+     * @param value 原始值
+     * @param fallback 默认值
+     * @return 处理后的文本
+     */
     private String textValue(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
     }
 
+    /**
+     * 计算规则在账本时区中的计划执行时间。
+     *
+     * @param rule 规则实体
+     * @param date 目标日期
+     * @param book 账本实体
+     * @return 转换后的时间
+     */
     private Instant scheduledInstant(RecurringRuleEntity rule, LocalDate date, BookEntity book) {
         if (book == null) {
             throw new BusinessException(ErrorCodes.BOOK_NOT_FOUND, "账本不存在");
@@ -312,6 +460,12 @@ public class RecurringExecutionService {
         return date.atTime(rule.getExecutionTime()).atZone(ZoneId.of(book.getTimezone())).toInstant();
     }
 
+    /**
+     * 推进规则的下一次执行日期。
+     *
+     * @param rule 规则实体
+     * @param scheduledDate 计划执行日期
+     */
     private void advance(RecurringRuleEntity rule, LocalDate scheduledDate) {
         LocalDate next = RecurringDateCalculator.nextDate(scheduledDate.plusDays(1), rule);
         rule.setLastExecutionDate(scheduledDate);
@@ -322,6 +476,12 @@ public class RecurringExecutionService {
         ruleMapper.updateById(rule);
     }
 
+    /**
+     * 锁定并校验待修改的执行记录。
+     *
+     * @param executionId 执行记录ID
+     * @return 重复规则执行实体
+     */
     private RecurringExecutionEntity requireExecutionForUpdate(Long executionId) {
         RecurringExecutionEntity execution = executionMapper.selectByIdForUpdate(executionId);
         if (execution == null) {
@@ -330,18 +490,36 @@ public class RecurringExecutionService {
         return execution;
     }
 
+    /**
+     * 查询执行记录。
+     *
+     * @param ruleId 规则ID
+     * @param scheduledDate 计划执行日期
+     * @return 重复规则执行实体
+     */
     private RecurringExecutionEntity findExecution(Long ruleId, LocalDate scheduledDate) {
         return executionMapper.selectOne(Wrappers.<RecurringExecutionEntity>lambdaQuery()
                 .eq(RecurringExecutionEntity::getRuleId, ruleId)
                 .eq(RecurringExecutionEntity::getScheduledDate, scheduledDate));
     }
 
+    /**
+     * 校验规则当前可执行。
+     *
+     * @param rule 规则实体
+     */
     private void requireAvailableRule(RecurringRuleEntity rule) {
         if (rule == null || rule.getDeletedFlag() != 0) {
             throw new BusinessException(ErrorCodes.TRANSACTION_INVALID, "周期规则不存在");
         }
     }
 
+    /**
+     * 提取适合展示的执行失败原因。
+     *
+     * @param exception 失败异常
+     * @return 处理后的文本
+     */
     private String readableMessage(RuntimeException exception) {
         String message = exception.getMessage();
         if (message == null || message.isBlank()) {

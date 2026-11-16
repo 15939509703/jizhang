@@ -40,6 +40,14 @@ public class ReimbursementService {
     private final TransactionService transactionService;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化报销记录服务。
+     *
+     * @param reimbursementMapper 数据访问器
+     * @param transactionMapper 数据访问器
+     * @param transactionService 关联服务
+     * @param bookAccessService 关联服务
+     */
     public ReimbursementService(ReimbursementMapper reimbursementMapper, TransactionMapper transactionMapper,
                                 TransactionService transactionService, BookAccessService bookAccessService) {
         this.reimbursementMapper = reimbursementMapper;
@@ -48,6 +56,14 @@ public class ReimbursementService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 查询报销记录列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param status 状态
+     * @return 报销记录列表
+     */
     public List<ReimbursementOutDTO> list(Long userId, Long bookId, String status) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.REIMBURSEMENTS);
         if (status != null && !STATUSES.contains(status)) {
@@ -60,6 +76,13 @@ public class ReimbursementService {
         return reimbursementMapper.selectList(query).stream().map(this::toOutput).toList();
     }
 
+    /**
+     * 创建报销记录。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 报销记录输出对象
+     */
     @Transactional
     public ReimbursementOutDTO create(Long userId, ReimbursementCreateInDTO input) {
         if (input.expenseTransactionId() == null) {
@@ -71,6 +94,13 @@ public class ReimbursementService {
         return createFromExpense(userId, input);
     }
 
+    /**
+     * 根据已有支出账单创建报销记录。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 报销记录输出对象
+     */
     private ReimbursementOutDTO createFromExpense(Long userId, ReimbursementCreateInDTO input) {
         validateLinkedType(input.reimbursementType());
         TransactionEntity expense = transactionMapper.selectById(input.expenseTransactionId());
@@ -96,6 +126,13 @@ public class ReimbursementService {
         return toOutput(entity);
     }
 
+    /**
+     * 手动创建报销记录。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 报销记录输出对象
+     */
     private ReimbursementOutDTO createManual(Long userId, ReimbursementCreateInDTO input) {
         validateManualInput(input.bookId(), input.expectedAmount());
         bookAccessService.requireAction(userId, input.bookId(), BookAction.REIMBURSEMENTS_MANAGE);
@@ -104,6 +141,13 @@ public class ReimbursementService {
         return toOutput(entity);
     }
 
+    /**
+     * 查询报销记录。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 报销记录输出对象
+     */
     public ReimbursementOutDTO get(Long userId, Long id) {
         ReimbursementEntity entity = reimbursementMapper.selectById(id);
         if (entity == null) {
@@ -113,6 +157,14 @@ public class ReimbursementService {
         return toOutput(entity);
     }
 
+    /**
+     * 更新报销记录。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @param input 请求参数
+     * @return 报销记录输出对象
+     */
     @Transactional
     public ReimbursementOutDTO update(Long userId, Long id, ReimbursementUpdateInDTO input) {
         ReimbursementEntity entity = requireLocked(userId, id);
@@ -133,6 +185,12 @@ public class ReimbursementService {
         return toOutput(entity);
     }
 
+    /**
+     * 删除报销记录。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     */
     @Transactional
     public void delete(Long userId, Long id) {
         ReimbursementEntity entity = requireLocked(userId, id);
@@ -143,6 +201,14 @@ public class ReimbursementService {
         reimbursementMapper.deleteById(entity.getId());
     }
 
+    /**
+     * 确认报销到账并创建关联账单。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @param input 请求参数
+     * @return 报销记录输出对象
+     */
     @Transactional
     public ReimbursementOutDTO receive(Long userId, Long id, ReimbursementReceiveInDTO input) {
         ReimbursementEntity entity = requireLocked(userId, id);
@@ -164,6 +230,13 @@ public class ReimbursementService {
         return toOutput(entity);
     }
 
+    /**
+     * 取消报销记录。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 报销记录输出对象
+     */
     @Transactional
     public ReimbursementOutDTO cancel(Long userId, Long id) {
         ReimbursementEntity entity = requireLocked(userId, id);
@@ -180,6 +253,13 @@ public class ReimbursementService {
         return toOutput(entity);
     }
 
+    /**
+     * 锁定并校验报销记录。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 报销记录实体
+     */
     private ReimbursementEntity requireLocked(Long userId, Long id) {
         ReimbursementEntity entity = reimbursementMapper.selectByIdForUpdate(id);
         if (entity == null) {
@@ -189,6 +269,14 @@ public class ReimbursementService {
         return entity;
     }
 
+    /**
+     * 恢复已取消报销记录或返回已有记录。
+     *
+     * @param userId 用户ID
+     * @param entity 业务实体
+     * @param input 请求参数
+     * @return 报销记录输出对象
+     */
     private ReimbursementOutDTO restoreOrReturn(Long userId, ReimbursementEntity entity,
                                                  ReimbursementCreateInDTO input) {
         if (!"CANCELLED".equals(entity.getStatus())) {
@@ -203,6 +291,16 @@ public class ReimbursementService {
         return toOutput(entity);
     }
 
+    /**
+     * 构建报销记录实体。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @param bookId 账本ID
+     * @param expenseTransactionId 支出账单ID
+     * @param expectedAmount 预计报销金额
+     * @return 报销记录实体
+     */
     private ReimbursementEntity buildEntity(Long userId, ReimbursementCreateInDTO input,
                                              Long bookId, Long expenseTransactionId, BigDecimal expectedAmount) {
         ReimbursementEntity entity = new ReimbursementEntity();
@@ -220,6 +318,12 @@ public class ReimbursementService {
         return entity;
     }
 
+    /**
+     * 设置报销预计金额。
+     *
+     * @param entity 业务实体
+     * @param expectedAmount 预计报销金额
+     */
     private void applyExpectedAmount(ReimbursementEntity entity, BigDecimal expectedAmount) {
         if (entity.getExpenseTransactionId() != null) {
             if (expectedAmount != null && expectedAmount.compareTo(entity.getExpectedAmount()) != 0) {
@@ -231,12 +335,25 @@ public class ReimbursementService {
         entity.setExpectedAmount(expectedAmount);
     }
 
+    /**
+     * 校验手动报销输入。
+     *
+     * @param bookId 账本ID
+     * @param expectedAmount 预计报销金额
+     */
     private void validateManualInput(Long bookId, BigDecimal expectedAmount) {
         if (bookId == null || expectedAmount == null || expectedAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "手动报销必须填写账本和大于0的金额");
         }
     }
 
+    /**
+     * 确定报销记录创建类型。
+     *
+     * @param reimbursementType 报销类型
+     * @param expenseTransactionId 支出账单ID
+     * @return 处理后的文本
+     */
     private String resolveCreateType(String reimbursementType, Long expenseTransactionId) {
         if (expenseTransactionId != null) {
             return ADVANCE_TYPE;
@@ -244,6 +361,12 @@ public class ReimbursementService {
         return reimbursementType == null ? ADVANCE_TYPE : validateType(reimbursementType);
     }
 
+    /**
+     * 设置报销记录类型。
+     *
+     * @param entity 业务实体
+     * @param reimbursementType 报销类型
+     */
     private void applyReimbursementType(ReimbursementEntity entity, String reimbursementType) {
         if (reimbursementType == null) {
             return;
@@ -254,12 +377,23 @@ public class ReimbursementService {
         entity.setReimbursementType(validateType(reimbursementType));
     }
 
+    /**
+     * 校验关联支出账单类型。
+     *
+     * @param reimbursementType 报销类型
+     */
     private void validateLinkedType(String reimbursementType) {
         if (reimbursementType != null && !ADVANCE_TYPE.equals(reimbursementType)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "关联支出只能使用垫付报销类型");
         }
     }
 
+    /**
+     * 校验类型。
+     *
+     * @param reimbursementType 报销类型
+     * @return 处理后的文本
+     */
     private String validateType(String reimbursementType) {
         if (!REIMBURSEMENT_TYPES.contains(reimbursementType)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "报销类型不正确");
@@ -267,10 +401,25 @@ public class ReimbursementService {
         return reimbursementType;
     }
 
+    /**
+     * 读取报销记录保存的创建类型。
+     *
+     * @param entity 业务实体
+     * @return 处理后的文本
+     */
     private String storedType(ReimbursementEntity entity) {
         return entity.getReimbursementType() == null ? ADVANCE_TYPE : entity.getReimbursementType();
     }
 
+    /**
+     * 更新报销记录可编辑字段。
+     *
+     * @param entity 业务实体
+     * @param reimburserName 报销人名称
+     * @param submittedDate 日期
+     * @param expectedDate 日期
+     * @param note 备注
+     */
     private void applyEditableFields(ReimbursementEntity entity, String reimburserName,
                                      LocalDate submittedDate, LocalDate expectedDate,
                                      String note) {
@@ -280,6 +429,12 @@ public class ReimbursementService {
         entity.setNote(trim(note));
     }
 
+    /**
+     * 转换为报销记录输出对象。
+     *
+     * @param entity 业务实体
+     * @return 报销记录输出对象
+     */
     private ReimbursementOutDTO toOutput(ReimbursementEntity entity) {
         return new ReimbursementOutDTO(entity.getId(), entity.getReimbursementNo(), entity.getBookId(),
                 entity.getExpenseTransactionId(), entity.getReimbursementTransactionId(), storedType(entity),
@@ -288,6 +443,12 @@ public class ReimbursementService {
                 entity.getStatus(), entity.getNote(), entity.getVersion());
     }
 
+    /**
+     * 清理文本首尾空白。
+     *
+     * @param value 原始值
+     * @return 处理后的文本
+     */
     private String trim(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }

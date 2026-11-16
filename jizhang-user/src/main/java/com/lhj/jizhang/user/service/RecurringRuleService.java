@@ -43,6 +43,16 @@ public class RecurringRuleService {
     private final BookMapper bookMapper;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化重复规则服务。
+     *
+     * @param ruleMapper 数据访问器
+     * @param executionMapper 数据访问器
+     * @param accountMapper 数据访问器
+     * @param categoryMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param bookAccessService 关联服务
+     */
     public RecurringRuleService(
             RecurringRuleMapper ruleMapper,
             RecurringExecutionMapper executionMapper,
@@ -59,6 +69,14 @@ public class RecurringRuleService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 查询重复规则列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param status 状态
+     * @return 重复规则列表
+     */
     public List<RecurringRuleOutDTO> list(Long userId, Long bookId, String status) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.RECURRING);
         if (status != null && !STATUSES.contains(status)) {
@@ -75,12 +93,26 @@ public class RecurringRuleService {
         return ruleMapper.selectList(query).stream().map(rule -> toOutput(rule, List.of())).toList();
     }
 
+    /**
+     * 查询重复规则。
+     *
+     * @param userId 用户ID
+     * @param ruleId 规则ID
+     * @return 重复规则输出对象
+     */
     public RecurringRuleOutDTO get(Long userId, Long ruleId) {
         RecurringRuleEntity rule = requireRule(ruleId);
         bookAccessService.requireMenu(userId, rule.getBookId(), BookMenu.RECURRING);
         return toOutput(rule, recentExecutions(ruleId));
     }
 
+    /**
+     * 创建重复规则。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 重复规则输出对象
+     */
     @Transactional
     public RecurringRuleOutDTO create(Long userId, RecurringRuleCreateInDTO input) {
         bookAccessService.requireAction(userId, input.bookId(), BookAction.RECURRING_MANAGE);
@@ -106,6 +138,14 @@ public class RecurringRuleService {
         return toOutput(rule, List.of());
     }
 
+    /**
+     * 更新重复规则。
+     *
+     * @param userId 用户ID
+     * @param ruleId 规则ID
+     * @param input 请求参数
+     * @return 重复规则输出对象
+     */
     @Transactional
     public RecurringRuleOutDTO update(Long userId, Long ruleId, RecurringRuleUpdateInDTO input) {
         RecurringRuleEntity rule = requireRuleForUpdate(ruleId);
@@ -129,6 +169,13 @@ public class RecurringRuleService {
         return toOutput(rule, recentExecutions(ruleId));
     }
 
+    /**
+     * 暂停重复规则。
+     *
+     * @param userId 用户ID
+     * @param ruleId 规则ID
+     * @return 重复规则输出对象
+     */
     @Transactional
     public RecurringRuleOutDTO pause(Long userId, Long ruleId) {
         RecurringRuleEntity rule = requireRuleForUpdate(ruleId);
@@ -139,6 +186,13 @@ public class RecurringRuleService {
         return toOutput(rule, recentExecutions(ruleId));
     }
 
+    /**
+     * 恢复重复规则。
+     *
+     * @param userId 用户ID
+     * @param ruleId 规则ID
+     * @return 重复规则输出对象
+     */
     @Transactional
     public RecurringRuleOutDTO resume(Long userId, Long ruleId) {
         RecurringRuleEntity rule = requireRuleForUpdate(ruleId);
@@ -150,6 +204,12 @@ public class RecurringRuleService {
         return toOutput(rule, recentExecutions(ruleId));
     }
 
+    /**
+     * 删除重复规则。
+     *
+     * @param userId 用户ID
+     * @param ruleId 规则ID
+     */
     @Transactional
     public void delete(Long userId, Long ruleId) {
         RecurringRuleEntity rule = requireRuleForUpdate(ruleId);
@@ -161,6 +221,12 @@ public class RecurringRuleService {
         ruleMapper.updateById(rule);
     }
 
+    /**
+     * 查询并校验规则。
+     *
+     * @param ruleId 规则ID
+     * @return 重复规则实体
+     */
     RecurringRuleEntity requireRule(Long ruleId) {
         RecurringRuleEntity rule = ruleMapper.selectById(ruleId);
         if (rule == null || rule.getDeletedFlag() != 0) {
@@ -169,6 +235,12 @@ public class RecurringRuleService {
         return rule;
     }
 
+    /**
+     * 锁定并校验待修改的重复规则。
+     *
+     * @param ruleId 规则ID
+     * @return 重复规则实体
+     */
     private RecurringRuleEntity requireRuleForUpdate(Long ruleId) {
         RecurringRuleEntity rule = ruleMapper.selectByIdForUpdate(ruleId);
         if (rule == null || rule.getDeletedFlag() != 0) {
@@ -177,6 +249,15 @@ public class RecurringRuleService {
         return rule;
     }
 
+    /**
+     * 校验规则引用的分类和账户。
+     *
+     * @param bookId 账本ID
+     * @param type 类型
+     * @param categoryId 分类ID
+     * @param accountId 账户ID
+     * @param targetAccountId 目标账户ID
+     */
     private void validateReferences(Long bookId, String type, Long categoryId, Long accountId, Long targetAccountId) {
         validateAccount(bookId, accountId);
         if ("TRANSFER".equals(type)) {
@@ -196,6 +277,12 @@ public class RecurringRuleService {
         }
     }
 
+    /**
+     * 校验账户。
+     *
+     * @param bookId 账本ID
+     * @param accountId 账户ID
+     */
     private void validateAccount(Long bookId, Long accountId) {
         AccountEntity account = accountMapper.selectById(accountId);
         if (account == null || !bookId.equals(account.getBookId()) || account.getStatus() != 1
@@ -204,6 +291,12 @@ public class RecurringRuleService {
         }
     }
 
+    /**
+     * 校验规则的起止日期。
+     *
+     * @param startDate 起始日期
+     * @param endDate 结束日期
+     */
     private void validateDates(LocalDate startDate, LocalDate endDate) {
         if (endDate != null && endDate.isBefore(startDate)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "结束日期不能早于开始日期");
@@ -229,6 +322,26 @@ public class RecurringRuleService {
         }
     }
 
+    /**
+     * 将请求字段应用到重复规则实体。
+     *
+     * @param rule 规则实体
+     * @param type 类型
+     * @param categoryId 分类ID
+     * @param accountId 账户ID
+     * @param targetAccountId 目标账户ID
+     * @param amount 金额
+     * @param title 标题
+     * @param note 备注
+     * @param recurrenceType 重复周期类型
+     * @param executionMonth 每年执行月份
+     * @param executionDay 每月执行日
+     * @param monthEnd 是否启用
+     * @param executionTime 计划执行时间
+     * @param startDate 起始日期
+     * @param endDate 结束日期
+     * @param executionMode 执行模式
+     */
     private void apply(RecurringRuleEntity rule, String type, Long categoryId, Long accountId,
                        Long targetAccountId, java.math.BigDecimal amount, String title, String note,
                        String recurrenceType, Integer executionMonth, Integer executionDay, Boolean monthEnd,
@@ -251,6 +364,13 @@ public class RecurringRuleService {
         rule.setExecutionMode(executionMode);
     }
 
+    /**
+     * 计算不早于今天的下次执行日期。
+     *
+     * @param rule 规则实体
+     * @param book 账本实体
+     * @return 计算后的日期
+     */
     private LocalDate nextFromToday(RecurringRuleEntity rule, BookEntity book) {
         ZonedDateTime now = ZonedDateTime.now(ZoneId.of(book.getTimezone()));
         LocalDate from = !"MONTHLY".equals(rule.getRecurrenceType())
@@ -259,16 +379,35 @@ public class RecurringRuleService {
         return RecurringDateCalculator.nextDate(from, rule);
     }
 
+    /**
+     * 计算晚于今天的下次执行日期。
+     *
+     * @param rule 规则实体
+     * @param book 账本实体
+     * @return 计算后的日期
+     */
     private LocalDate nextAfterToday(RecurringRuleEntity rule, BookEntity book) {
         LocalDate tomorrow = LocalDate.now(ZoneId.of(book.getTimezone())).plusDays(1);
         return RecurringDateCalculator.nextDate(tomorrow, rule);
     }
 
+    /**
+     * 更新规则的修改人和版本号。
+     *
+     * @param rule 规则实体
+     * @param userId 用户ID
+     */
     private void touch(RecurringRuleEntity rule, Long userId) {
         rule.setVersion(rule.getVersion() + 1);
         rule.setModifier(String.valueOf(userId));
     }
 
+    /**
+     * 查询并校验账本存在。
+     *
+     * @param bookId 账本ID
+     * @return 重复规则实体
+     */
     private BookEntity requireBook(Long bookId) {
         BookEntity book = bookMapper.selectById(bookId);
         if (book == null || book.getStatus() != 1) {
@@ -277,6 +416,12 @@ public class RecurringRuleService {
         return book;
     }
 
+    /**
+     * 查询规则最近的执行记录。
+     *
+     * @param ruleId 规则ID
+     * @return 重复规则列表
+     */
     private List<RecurringExecutionOutDTO> recentExecutions(Long ruleId) {
         RecurringRuleEntity rule = requireRule(ruleId);
         return executionMapper.selectList(Wrappers.<RecurringExecutionEntity>lambdaQuery()
@@ -287,6 +432,13 @@ public class RecurringRuleService {
                 .map(execution -> toExecution(execution, rule)).toList();
     }
 
+    /**
+     * 转换为重复规则输出对象。
+     *
+     * @param rule 规则实体
+     * @param executions 执行记录集合
+     * @return 重复规则输出对象
+     */
     RecurringRuleOutDTO toOutput(RecurringRuleEntity rule, List<RecurringExecutionOutDTO> executions) {
         return new RecurringRuleOutDTO(rule.getId(), rule.getRuleNo(), rule.getBookId(), rule.getCreatedUserId(),
                 rule.getTransactionType(), rule.getCategoryId(), rule.getAccountId(), rule.getTargetAccountId(),
@@ -297,6 +449,13 @@ public class RecurringRuleService {
                 executions);
     }
 
+    /**
+     * 转换为执行记录。
+     *
+     * @param execution 执行记录实体
+     * @param rule 规则实体
+     * @return 重复规则输出对象
+     */
     RecurringExecutionOutDTO toExecution(RecurringExecutionEntity execution, RecurringRuleEntity rule) {
         return new RecurringExecutionOutDTO(execution.getId(), execution.getRuleId(), rule.getTitle(),
                 rule.getTransactionType(), rule.getAmount(), execution.getScheduledDate(), execution.getTransactionId(),

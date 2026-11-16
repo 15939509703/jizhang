@@ -53,6 +53,9 @@ public class BookDeletionService {
         deleteDependents(bookId);
         jdbcTemplate.update("DELETE FROM fin_book WHERE id = ?", bookId);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+    /**
+     * 在账本删除事务提交后清理关联文件。
+     */
             @Override
             public void afterCommit() {
                 deleteFiles(bookId, files);

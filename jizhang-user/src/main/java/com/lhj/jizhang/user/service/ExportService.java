@@ -71,6 +71,17 @@ public class ExportService {
     private final BookAccessService bookAccessService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化导出任务服务。
+     *
+     * @param exportTaskMapper 数据访问器
+     * @param transactionMapper 数据访问器
+     * @param categoryMapper 数据访问器
+     * @param accountMapper 数据访问器
+     * @param accountEntryMapper 数据访问器
+     * @param bookAccessService 关联服务
+     * @param objectMapper 数据访问器
+     */
     public ExportService(
             ExportTaskMapper exportTaskMapper,
             TransactionMapper transactionMapper,
@@ -89,6 +100,13 @@ public class ExportService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 创建导出任务。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 导出任务输出对象
+     */
     @Transactional
     public ExportTaskOutDTO create(Long userId, ExportCreateInDTO input) {
         bookAccessService.requireLedgerFileAccess(userId, input.bookId());
@@ -111,11 +129,25 @@ public class ExportService {
         return toOutput(task);
     }
 
+    /**
+     * 查询导出任务。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 导出任务输出对象
+     */
     public ExportTaskOutDTO get(Long userId, Long id) {
         ExportTaskEntity task = requireTask(userId, id);
         return toOutput(task);
     }
 
+    /**
+     * 下载已生成的导出文件。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 导出文件
+     */
     public ExportFile download(Long userId, Long id) {
         ExportTaskEntity task = requireTask(userId, id);
         ExportCreateInDTO query = readQuery(task);
@@ -127,6 +159,12 @@ public class ExportService {
         return buildCsvFile(task, rows, context);
     }
 
+    /**
+     * 查询符合导出条件的账单。
+     *
+     * @param input 请求参数
+     * @return 导出任务列表
+     */
     private List<TransactionEntity> loadTransactions(ExportCreateInDTO input) {
         var query = Wrappers.<TransactionEntity>lambdaQuery()
                 .eq(TransactionEntity::getBookId, input.bookId())
@@ -160,6 +198,13 @@ public class ExportService {
         return transactionMapper.selectList(query);
     }
 
+    /**
+     * 批量加载导出所需的关联数据。
+     *
+     * @param bookId 账本ID
+     * @param transactions 账单集合
+     * @return 导出关联数据
+     */
     private ExportContext loadContext(Long bookId, List<TransactionEntity> transactions) {
         Map<Long, CategoryEntity> categories = categoryMapper.selectList(Wrappers.<CategoryEntity>lambdaQuery()
                         .eq(CategoryEntity::getBookId, bookId))
@@ -171,6 +216,12 @@ public class ExportService {
         return new ExportContext(categories, accounts, entries);
     }
 
+    /**
+     * 加载流水。
+     *
+     * @param transactions 账单集合
+     * @return 导出任务映射
+     */
     private Map<Long, List<AccountEntryEntity>> loadEntries(List<TransactionEntity> transactions) {
         if (transactions.isEmpty()) {
             return Map.of();
@@ -183,11 +234,26 @@ public class ExportService {
                         LinkedHashMap::new, Collectors.toList()));
     }
 
+    /**
+     * 封装生成的 Excel 导出文件。
+     *
+     * @param task 任务实体
+     * @param rows 数据行列表
+     * @param context 关联上下文
+     * @return 导出文件
+     */
     private ExportFile buildExcelFile(ExportTaskEntity task, List<TransactionEntity> rows, ExportContext context) {
         String fileName = exportFileName(task, "xlsx");
         return new ExportFile(fileName, XLSX_CONTENT_TYPE, buildExcel(rows, context));
     }
 
+    /**
+     * 生成 Excel 文件字节。
+     *
+     * @param rows 数据行列表
+     * @param context 关联上下文
+     * @return 文件字节
+     */
     private byte[] buildExcel(List<TransactionEntity> rows, ExportContext context) {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("账单明细");
@@ -199,6 +265,14 @@ public class ExportService {
         }
     }
 
+    /**
+     * 将账单数据写入 Excel 工作表。
+     *
+     * @param workbook Excel 工作簿
+     * @param sheet Excel 工作表
+     * @param rows 数据行列表
+     * @param context 关联上下文
+     */
     private void populateExcelSheet(Workbook workbook, Sheet sheet, List<TransactionEntity> rows,
                                     ExportContext context) {
         Row headerRow = sheet.createRow(0);
@@ -213,6 +287,12 @@ public class ExportService {
         }
     }
 
+    /**
+     * 创建 Excel 表头样式。
+     *
+     * @param workbook Excel 工作簿
+     * @return Excel 表头样式
+     */
     private CellStyle createHeaderStyle(Workbook workbook) {
         Font font = workbook.createFont();
         font.setBold(true);
@@ -225,6 +305,13 @@ public class ExportService {
         return style;
     }
 
+    /**
+     * 将一组字段写入 Excel 行。
+     *
+     * @param row 当前数据行
+     * @param values 字段值列表
+     * @param style 单元格样式
+     */
     private void addExcelRow(Row row, List<String> values, CellStyle style) {
         for (int index = 0; index < values.size(); index++) {
             Cell cell = row.createCell(index);
@@ -235,12 +322,27 @@ public class ExportService {
         }
     }
 
+    /**
+     * 封装生成的 CSV 导出文件。
+     *
+     * @param task 任务实体
+     * @param rows 数据行列表
+     * @param context 关联上下文
+     * @return 导出文件
+     */
     private ExportFile buildCsvFile(ExportTaskEntity task, List<TransactionEntity> rows, ExportContext context) {
         String content = buildDelimitedContent(rows, context, ",");
         byte[] bytes = ("\uFEFF" + content).getBytes(StandardCharsets.UTF_8);
         return new ExportFile(exportFileName(task, "csv"), "text/csv", bytes);
     }
 
+    /**
+     * 生成导出文件名。
+     *
+     * @param task 任务实体
+     * @param suffix 文件扩展名
+     * @return 处理后的文本
+     */
     private String exportFileName(ExportTaskEntity task, String suffix) {
         LocalDateTime finishedTime = task.getFinishedTime() == null
                 ? LocalDateTime.now(ZoneOffset.UTC) : task.getFinishedTime();
@@ -249,6 +351,14 @@ public class ExportService {
         return "bills-" + timestamp + "." + suffix;
     }
 
+    /**
+     * 生成 CSV 等分隔格式的导出内容。
+     *
+     * @param rows 数据行列表
+     * @param context 关联上下文
+     * @param delimiter 字段分隔符
+     * @return 处理后的文本
+     */
     private String buildDelimitedContent(List<TransactionEntity> rows, ExportContext context, String delimiter) {
         StringBuilder builder = new StringBuilder();
         addRow(builder, delimiter, EXPORT_HEADERS);
@@ -258,17 +368,38 @@ public class ExportService {
         return builder.toString();
     }
 
+    /**
+     * 提取账单导出字段。
+     *
+     * @param row 当前数据行
+     * @param context 关联上下文
+     * @return 导出任务列表
+     */
     private List<String> transactionValues(TransactionEntity row, ExportContext context) {
         return Arrays.asList(String.valueOf(row.getHappenedAt()), typeLabel(row.getTransactionType()),
                 row.getTitle(), categoryName(context, row.getCategoryId()), accountNames(context, row.getId()),
                 String.valueOf(row.getAmount()), statusLabel(row.getStatus()), row.getNote());
     }
 
+    /**
+     * 追加一行分隔格式文本。
+     *
+     * @param builder 内容构建器
+     * @param delimiter 字段分隔符
+     * @param values 字段值列表
+     */
     private void addRow(StringBuilder builder, String delimiter, List<String> values) {
         builder.append(values.stream().map(value -> escape(value, delimiter)).collect(Collectors.joining(delimiter)));
         builder.append('\n');
     }
 
+    /**
+     * 转义分隔文本中的特殊字符。
+     *
+     * @param value 原始值
+     * @param delimiter 字段分隔符
+     * @return 处理后的文本
+     */
     private String escape(String value, String delimiter) {
         String normalized = value == null ? "" : value;
         if ("\t".equals(delimiter)) {
@@ -278,11 +409,25 @@ public class ExportService {
         return "\"" + escaped + "\"";
     }
 
+    /**
+     * 读取导出账单的分类名称。
+     *
+     * @param context 关联上下文
+     * @param categoryId 分类ID
+     * @return 处理后的文本
+     */
     private String categoryName(ExportContext context, Long categoryId) {
         CategoryEntity category = categoryId == null ? null : context.categories().get(categoryId);
         return category == null ? "" : category.getName();
     }
 
+    /**
+     * 读取导出账单关联的账户名称。
+     *
+     * @param context 关联上下文
+     * @param transactionId 账单ID
+     * @return 处理后的文本
+     */
     private String accountNames(ExportContext context, Long transactionId) {
         return context.entries().getOrDefault(transactionId, List.of()).stream()
                 .map(entry -> context.accounts().get(entry.getAccountId()))
@@ -292,6 +437,11 @@ public class ExportService {
                 .collect(Collectors.joining(" / "));
     }
 
+    /**
+     * 校验输入。
+     *
+     * @param input 请求参数
+     */
     private void validateInput(ExportCreateInDTO input) {
         if (input.type() != null && !input.type().isBlank() && !TRANSACTION_TYPES.contains(input.type())) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "账单类型不正确");
@@ -304,6 +454,13 @@ public class ExportService {
         }
     }
 
+    /**
+     * 查询并校验用户的导出任务。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 导出任务实体
+     */
     private ExportTaskEntity requireTask(Long userId, Long id) {
         ExportTaskEntity task = exportTaskMapper.selectById(id);
         if (task == null || !userId.equals(task.getUserId())) {
@@ -313,6 +470,12 @@ public class ExportService {
         return task;
     }
 
+    /**
+     * 序列化导出查询条件。
+     *
+     * @param input 请求参数
+     * @return 处理后的文本
+     */
     private String writeQuery(ExportCreateInDTO input) {
         try {
             return objectMapper.writeValueAsString(input);
@@ -321,6 +484,12 @@ public class ExportService {
         }
     }
 
+    /**
+     * 反序列化导出查询条件。
+     *
+     * @param task 任务实体
+     * @return 导出任务请求参数
+     */
     private ExportCreateInDTO readQuery(ExportTaskEntity task) {
         try {
             return objectMapper.readValue(task.getQueryJson(), ExportCreateInDTO.class);
@@ -329,12 +498,24 @@ public class ExportService {
         }
     }
 
+    /**
+     * 转换为导出任务输出对象。
+     *
+     * @param task 任务实体
+     * @return 导出任务输出对象
+     */
     private ExportTaskOutDTO toOutput(ExportTaskEntity task) {
         return new ExportTaskOutDTO(task.getId(), task.getTaskNo(), task.getBookId(), task.getExportType(),
                 task.getTaskStatus(), task.getFileObjectKey(), task.getFailureReason(), toInstant(task.getFinishedTime()),
                 toInstant(task.getExpiredTime()));
     }
 
+    /**
+     * 转换账单类型的显示名称。
+     *
+     * @param type 类型
+     * @return 处理后的文本
+     */
     private String typeLabel(String type) {
         return switch (type) {
             case "EXPENSE" -> "支出";
@@ -344,6 +525,12 @@ public class ExportService {
         };
     }
 
+    /**
+     * 转换账单状态的显示名称。
+     *
+     * @param status 状态
+     * @return 处理后的文本
+     */
     private String statusLabel(String status) {
         return switch (status) {
             case "EFFECTIVE" -> "有效";
@@ -353,10 +540,22 @@ public class ExportService {
         };
     }
 
+    /**
+     * 将时间转换为 UTC 时间。
+     *
+     * @param instant 待转换时间戳
+     * @return 转换后的时间
+     */
     private LocalDateTime toUtc(Instant instant) {
         return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
+    /**
+     * 将数据库时间转换为时间戳。
+     *
+     * @param time 待转换时间
+     * @return 转换后的时间
+     */
     private Instant toInstant(LocalDateTime time) {
         return time == null ? null : time.toInstant(ZoneOffset.UTC);
     }

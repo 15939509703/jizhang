@@ -43,6 +43,15 @@ public class AccountService {
     private final BookMapper bookMapper;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化账户服务。
+     *
+     * @param accountMapper 数据访问器
+     * @param accountEntryMapper 数据访问器
+     * @param transactionMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param bookAccessService 关联服务
+     */
     public AccountService(AccountMapper accountMapper, AccountEntryMapper accountEntryMapper,
                           TransactionMapper transactionMapper, BookMapper bookMapper,
                           BookAccessService bookAccessService) {
@@ -53,6 +62,13 @@ public class AccountService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 查询账户列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 账户列表
+     */
     public List<AccountOutDTO> list(Long userId, Long bookId) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.ACCOUNTS);
         return accountMapper.selectList(Wrappers.<AccountEntity>lambdaQuery()
@@ -62,12 +78,26 @@ public class AccountService {
                 .map(this::toOutput).toList();
     }
 
+    /**
+     * 查询账户。
+     *
+     * @param userId 用户ID
+     * @param accountId 账户ID
+     * @return 账户输出对象
+     */
     public AccountOutDTO get(Long userId, Long accountId) {
         AccountEntity account = requireAccount(accountId);
         bookAccessService.requireMenu(userId, account.getBookId(), BookMenu.ACCOUNTS);
         return toOutput(account);
     }
 
+    /**
+     * 创建账户。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 账户输出对象
+     */
     @Transactional
     public AccountOutDTO create(Long userId, AccountCreateInDTO input) {
         bookAccessService.requireAction(userId, input.bookId(), BookAction.ACCOUNTS_MANAGE);
@@ -91,12 +121,25 @@ public class AccountService {
         return toOutput(account);
     }
 
+    /**
+     * 校验账户期初余额。
+     *
+     * @param input 请求参数
+     */
     private void validateInitialBalance(AccountCreateInDTO input) {
         if ("LIABILITY".equals(input.accountNature()) && input.initialBalance().signum() < 0) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "信用额度不能小于0");
         }
     }
 
+    /**
+     * 更新账户。
+     *
+     * @param userId 用户ID
+     * @param accountId 账户ID
+     * @param input 请求参数
+     * @return 账户输出对象
+     */
     @Transactional
     public AccountOutDTO update(Long userId, Long accountId, AccountUpdateInDTO input) {
         AccountEntity account = requireAccount(accountId);
@@ -111,6 +154,12 @@ public class AccountService {
         return toOutput(account);
     }
 
+    /**
+     * 按指定顺序重排账户。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     */
     @Transactional
     public void sort(Long userId, AccountSortInDTO input) {
         bookAccessService.requireAction(userId, input.bookId(), BookAction.ACCOUNTS_MANAGE);
@@ -126,6 +175,12 @@ public class AccountService {
         }
     }
 
+    /**
+     * 删除账户。
+     *
+     * @param userId 用户ID
+     * @param accountId 账户ID
+     */
     @Transactional
     public void delete(Long userId, Long accountId) {
         AccountEntity account = requireAccount(accountId);
@@ -137,6 +192,14 @@ public class AccountService {
         accountMapper.updateById(account);
     }
 
+    /**
+     * 创建余额调整账单并更新账户余额。
+     *
+     * @param userId 用户ID
+     * @param accountId 账户ID
+     * @param input 请求参数
+     * @return 账户输出对象
+     */
     @Transactional
     public AccountOutDTO adjust(Long userId, Long accountId, AccountAdjustInDTO input) {
         AccountEntity account = accountMapper.selectByIdForUpdate(accountId);
@@ -182,6 +245,15 @@ public class AccountService {
                 account.getCurrentBalance().add(amount), note));
     }
 
+    /**
+     * 分页查询账户流水。
+     *
+     * @param userId 用户ID
+     * @param accountId 账户ID
+     * @param cursorId 分页游标ID
+     * @param limit 分页条数
+     * @return 账户流水分页结果
+     */
     public AccountEntryPageOutDTO entries(Long userId, Long accountId, Long cursorId, Integer limit) {
         AccountEntity account = requireAccount(accountId);
         bookAccessService.requireMenu(userId, account.getBookId(), BookMenu.ACCOUNTS);
@@ -206,6 +278,12 @@ public class AccountService {
         return new AccountEntryPageOutDTO(items, nextCursor, hasMore);
     }
 
+    /**
+     * 查询并校验账户。
+     *
+     * @param accountId 账户ID
+     * @return 账户实体
+     */
     private AccountEntity requireAccount(Long accountId) {
         AccountEntity account = accountMapper.selectById(accountId);
         if (account == null || account.getDeletedFlag() != 0) {
@@ -214,6 +292,11 @@ public class AccountService {
         return account;
     }
 
+    /**
+     * 校验账户排序请求。
+     *
+     * @param input 请求参数
+     */
     private void validateSortItems(AccountSortInDTO input) {
         Set<Long> accountIds = new HashSet<>();
         for (var item : input.items()) {
@@ -226,6 +309,12 @@ public class AccountService {
         }
     }
 
+    /**
+     * 计算下一个账户排序号。
+     *
+     * @param bookId 账本ID
+     * @return 下一个账户排序号
+     */
     private int nextSortNo(Long bookId) {
         AccountEntity last = accountMapper.selectOne(Wrappers.<AccountEntity>lambdaQuery()
                 .eq(AccountEntity::getBookId, bookId).eq(AccountEntity::getDeletedFlag, 0)
@@ -233,6 +322,14 @@ public class AccountService {
         return last == null ? 10 : last.getSortNo() + 10;
     }
 
+    /**
+     * 按请求ID查找已有余额调整账单。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param requestId 幂等请求ID
+     * @return 账户实体
+     */
     private TransactionEntity findAdjustment(Long userId, Long bookId, String requestId) {
         return transactionMapper.selectOne(Wrappers.<TransactionEntity>lambdaQuery()
                 .eq(TransactionEntity::getBookId, bookId)
@@ -240,6 +337,15 @@ public class AccountService {
                 .eq(TransactionEntity::getRequestId, requestId));
     }
 
+    /**
+     * 创建余额调整账单。
+     *
+     * @param userId 用户ID
+     * @param account 账户实体
+     * @param input 请求参数
+     * @param amount 金额
+     * @return 账户实体
+     */
     private TransactionEntity createAdjustment(Long userId, AccountEntity account, AccountAdjustInDTO input,
                                                 BigDecimal amount) {
         BookEntity book = bookMapper.selectById(account.getBookId());
@@ -261,6 +367,15 @@ public class AccountService {
         return transaction;
     }
 
+    /**
+     * 构建余额调整流水。
+     *
+     * @param userId 用户ID
+     * @param transaction 账单实体
+     * @param account 账户实体
+     * @param change 余额变动金额
+     * @return 账户实体
+     */
     private AccountEntryEntity buildAdjustmentEntry(Long userId, TransactionEntity transaction,
                                                      AccountEntity account, BigDecimal change) {
         AccountEntryEntity entry = new AccountEntryEntity();
@@ -276,6 +391,12 @@ public class AccountService {
         return entry;
     }
 
+    /**
+     * 批量加载流水关联的账单。
+     *
+     * @param entries 流水集合
+     * @return 账户映射
+     */
     private Map<Long, TransactionEntity> loadTransactions(List<AccountEntryEntity> entries) {
         if (entries.isEmpty()) {
             return Map.of();
@@ -285,12 +406,25 @@ public class AccountService {
                 .collect(Collectors.toMap(TransactionEntity::getId, Function.identity()));
     }
 
+    /**
+     * 转换为流水输出对象。
+     *
+     * @param entry 账户流水实体
+     * @param transaction 账单实体
+     * @return 账户输出对象
+     */
     private AccountEntryOutDTO toEntryOutput(AccountEntryEntity entry, TransactionEntity transaction) {
         return new AccountEntryOutDTO(entry.getId(), entry.getTransactionId(), transaction.getTitle(),
                 transaction.getTransactionType(), entry.getSignedAmount(), entry.getBalanceBefore(),
                 entry.getBalanceAfter(), entry.getHappenedAt().toInstant(ZoneOffset.UTC));
     }
 
+    /**
+     * 转换为账户输出对象。
+     *
+     * @param account 账户实体
+     * @return 账户输出对象
+     */
     private AccountOutDTO toOutput(AccountEntity account) {
         return new AccountOutDTO(account.getId(), account.getAccountNo(), account.getBookId(), account.getName(),
                 account.getAccountType(), account.getAccountNature(), account.getInitialBalance(),
@@ -298,6 +432,12 @@ public class AccountService {
                 account.getStatus(), account.getVersion(), toInstant(account.getCreatedTime()));
     }
 
+    /**
+     * 将数据库时间转换为时间戳。
+     *
+     * @param time 待转换时间
+     * @return 账户结果
+     */
     private java.time.Instant toInstant(LocalDateTime time) {
         return time == null ? null : time.toInstant(ZoneOffset.UTC);
     }

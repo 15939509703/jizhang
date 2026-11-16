@@ -52,6 +52,16 @@ public class LoanService {
     private final BookMapper bookMapper;
     private final TransactionMapper transactionMapper;
 
+    /**
+     * 初始化借还记录服务。
+     *
+     * @param loanRecordMapper 数据访问器
+     * @param bookAccessService 关联服务
+     * @param accountMapper 数据访问器
+     * @param accountEntryMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param transactionMapper 数据访问器
+     */
     public LoanService(LoanRecordMapper loanRecordMapper, BookAccessService bookAccessService,
                        AccountMapper accountMapper, AccountEntryMapper accountEntryMapper,
                        BookMapper bookMapper, TransactionMapper transactionMapper) {
@@ -80,6 +90,13 @@ public class LoanService {
                 .map(account -> new LoanAccountOutDTO(account.getId(), account.getName())).toList();
     }
 
+    /**
+     * 创建借还记录。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 借还记录输出对象
+     */
     @Transactional
     public LoanOutDTO create(Long userId, LoanCreateInDTO input) {
         bookAccessService.requireAction(userId, input.bookId(), BookAction.LOANS_MANAGE);
@@ -183,6 +200,17 @@ public class LoanService {
         return title.length() > 128 ? title.substring(0, 128) : title;
     }
 
+    /**
+     * 查询借还记录列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param loanType 借还类型
+     * @param status 状态
+     * @param cursorId 分页游标ID
+     * @param limit 分页条数
+     * @return 借还记录分页结果
+     */
     public LoanPageOutDTO list(Long userId, Long bookId, String loanType, String status, Long cursorId, Integer limit) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.LOANS);
         int pageSize = validateListInput(loanType, status, limit);
@@ -206,6 +234,13 @@ public class LoanService {
         return new LoanPageOutDTO(page.stream().map(this::toOutput).toList(), nextCursor, hasMore);
     }
 
+    /**
+     * 汇总借还记录。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 借还记录输出对象
+     */
     public LoanSummaryOutDTO summary(Long userId, Long bookId) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.LOANS);
         List<LoanRecordEntity> rows = loanRecordMapper.selectList(Wrappers.<LoanRecordEntity>lambdaQuery()
@@ -228,12 +263,27 @@ public class LoanService {
         return new LoanSummaryOutDTO(payable, receivable, overdue, rows.size());
     }
 
+    /**
+     * 查询借还记录。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 借还记录输出对象
+     */
     public LoanOutDTO get(Long userId, Long id) {
         LoanRecordEntity loan = requireLoan(id);
         bookAccessService.requireMenu(userId, loan.getBookId(), BookMenu.LOANS);
         return toOutput(loan);
     }
 
+    /**
+     * 更新借还记录。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @param input 请求参数
+     * @return 借还记录输出对象
+     */
     @Transactional
     public LoanOutDTO update(Long userId, Long id, LoanUpdateInDTO input) {
         LoanRecordEntity loan = loanRecordMapper.selectByIdForUpdate(id);
@@ -419,6 +469,14 @@ public class LoanService {
         return transaction;
     }
 
+    /**
+     * 记录借还提醒事件。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @param input 请求参数
+     * @return 借还记录输出对象
+     */
     @Transactional
     public LoanOutDTO remind(Long userId, Long id, LoanReminderInDTO input) {
         LoanRecordEntity loan = loanRecordMapper.selectByIdForUpdate(id);
@@ -456,6 +514,14 @@ public class LoanService {
         bumpVersion(userId, loan);
     }
 
+    /**
+     * 校验借还记录列表查询条件。
+     *
+     * @param loanType 借还类型
+     * @param status 状态
+     * @param limit 分页条数
+     * @return 有效分页条数
+     */
     private int validateListInput(String loanType, String status, Integer limit) {
         if (loanType != null && !loanType.isBlank() && !LOAN_TYPES.contains(loanType)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "借还类型不正确");
@@ -470,6 +536,12 @@ public class LoanService {
         return pageSize;
     }
 
+    /**
+     * 查询并校验借还。
+     *
+     * @param id 记录ID
+     * @return 借还记录实体
+     */
     private LoanRecordEntity requireLoan(Long id) {
         LoanRecordEntity loan = loanRecordMapper.selectById(id);
         if (loan == null) {
@@ -478,22 +550,48 @@ public class LoanService {
         return loan;
     }
 
+    /**
+     * 递增借还记录版本并更新操作人。
+     *
+     * @param userId 用户ID
+     * @param loan 借还记录实体
+     */
     private void bumpVersion(Long userId, LoanRecordEntity loan) {
         loan.setVersion(loan.getVersion() + 1);
         loan.setModifier(String.valueOf(userId));
     }
 
+    /**
+     * 生成还款时间线文本。
+     *
+     * @param loan 借还记录实体
+     * @param input 请求参数
+     * @return 处理后的文本
+     */
     private String repaymentText(LoanRecordEntity loan, LoanRepaymentInDTO input) {
         String action = "BORROW".equals(loan.getLoanType()) ? "还款" : "收款";
         String suffix = input.note() == null || input.note().isBlank() ? "" : "，" + input.note().trim();
         return action + input.amount() + suffix;
     }
 
+    /**
+     * 生成提醒时间线文本。
+     *
+     * @param input 请求参数
+     * @return 处理后的文本
+     */
     private String reminderText(LoanReminderInDTO input) {
         String note = input.note() == null || input.note().isBlank() ? "已催收" : input.note().trim();
         return "催收：" + note;
     }
 
+    /**
+     * 向备注追加时间线事件。
+     *
+     * @param note 备注
+     * @param event 时间线事件
+     * @return 处理后的文本
+     */
     private String appendTimeline(String note, String event) {
         String line = "[" + LocalDate.now() + "] " + event;
         if (note == null || note.isBlank()) {
@@ -503,6 +601,12 @@ public class LoanService {
         return next.length() > 1000 ? next.substring(next.length() - 1000) : next;
     }
 
+    /**
+     * 转换为借还记录输出对象。
+     *
+     * @param loan 借还记录实体
+     * @return 借还记录输出对象
+     */
     public LoanOutDTO toOutput(LoanRecordEntity loan) {
         return new LoanOutDTO(loan.getId(), loan.getLoanNo(), loan.getBookId(), loan.getCreatedUserId(),
                 loan.getLoanType(), loan.getCounterpartyName(), loan.getTotalAmount(), loan.getRepaidAmount(),
@@ -511,19 +615,43 @@ public class LoanService {
                 toInstant(loan.getModifiedTime()));
     }
 
+    /**
+     * 计算借还记录的未结清金额。
+     *
+     * @param loan 借还记录实体
+     * @return 计算后的金额
+     */
     private BigDecimal remaining(LoanRecordEntity loan) {
         return loan.getTotalAmount().subtract(loan.getRepaidAmount());
     }
 
+    /**
+     * 判断借还记录是否逾期。
+     *
+     * @param loan 借还记录实体
+     * @return 条件是否成立
+     */
     private boolean isOverdue(LoanRecordEntity loan) {
         return loan.getDueDate() != null && !"CLOSED".equals(loan.getStatus())
                 && loan.getDueDate().isBefore(LocalDate.now());
     }
 
+    /**
+     * 计算借还记录的展示状态。
+     *
+     * @param loan 借还记录实体
+     * @return 处理后的文本
+     */
     private String displayStatus(LoanRecordEntity loan) {
         return isOverdue(loan) ? "OVERDUE" : loan.getStatus();
     }
 
+    /**
+     * 将数据库时间转换为时间戳。
+     *
+     * @param time 待转换时间
+     * @return 转换后的时间
+     */
     private Instant toInstant(java.time.LocalDateTime time) {
         return time == null ? null : time.toInstant(ZoneOffset.UTC);
     }

@@ -23,6 +23,12 @@ public class UserAvatarService {
     private final UserMapper userMapper;
     private final Path uploadRoot;
 
+    /**
+     * 初始化用户头像服务。
+     *
+     * @param userMapper 数据访问器
+     * @param uploadDir 上传文件目录
+     */
     public UserAvatarService(UserMapper userMapper, @Value("${app.storage.upload-dir:./data/uploads}") String uploadDir) {
         this.userMapper = userMapper;
         this.uploadRoot = Path.of(uploadDir).toAbsolutePath().normalize();

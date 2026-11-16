@@ -24,6 +24,14 @@ public class BookPolicyService {
     private final BookAccessService accessService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化成员权限策略服务。
+     *
+     * @param memberMapper 数据访问器
+     * @param auditMapper 数据访问器
+     * @param accessService 关联服务
+     * @param objectMapper 数据访问器
+     */
     public BookPolicyService(BookMemberMapper memberMapper, BookAuditLogMapper auditMapper,
                              BookAccessService accessService, ObjectMapper objectMapper) {
         this.memberMapper = memberMapper;

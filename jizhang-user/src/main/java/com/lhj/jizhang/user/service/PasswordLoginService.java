@@ -31,6 +31,17 @@ public class PasswordLoginService {
     private final BookService bookService;
     private final TokenService tokenService;
 
+    /**
+     * 初始化密码登录服务。
+     *
+     * @param credentialService 关联服务
+     * @param userMapper 数据访问器
+     * @param userAuthMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param bookMemberMapper 数据访问器
+     * @param bookService 关联服务
+     * @param tokenService 关联服务
+     */
     public PasswordLoginService(
             PasswordCredentialService credentialService,
             UserMapper userMapper,
@@ -49,6 +60,12 @@ public class PasswordLoginService {
         this.tokenService = tokenService;
     }
 
+    /**
+     * 完成密码登录。
+     *
+     * @param input 请求参数
+     * @return 登录结果
+     */
     public WechatLoginOutDTO login(PasswordLoginInDTO input) {
         UserCredentialEntity credential = credentialService.findByUsername(input.username());
         if (credential != null && credentialService.isLocked(credential)) {
@@ -67,6 +84,12 @@ public class PasswordLoginService {
         return toOutput(user, book, tokens);
     }
 
+    /**
+     * 查询并校验启用状态的用户。
+     *
+     * @param userId 用户ID
+     * @return 密码登录实体
+     */
     private UserEntity requireActiveUser(Long userId) {
         UserEntity user = userMapper.selectById(userId);
         if (user == null || user.getStatus() == null || user.getStatus() != 1) {
@@ -75,6 +98,12 @@ public class PasswordLoginService {
         return user;
     }
 
+    /**
+     * 确保默认账本。
+     *
+     * @param userId 用户ID
+     * @return 密码登录实体
+     */
     private BookEntity ensureDefaultBook(Long userId) {
         BookMemberEntity membership = bookMemberMapper.selectOne(Wrappers.<BookMemberEntity>lambdaQuery()
                 .eq(BookMemberEntity::getUserId, userId)
@@ -91,6 +120,12 @@ public class PasswordLoginService {
         return book;
     }
 
+    /**
+     * 读取用户当前会话版本号。
+     *
+     * @param userId 用户ID
+     * @return 当前会话版本号
+     */
     private int sessionVersion(Long userId) {
         UserAuthEntity auth = userAuthMapper.selectOne(Wrappers.<UserAuthEntity>lambdaQuery()
                 .eq(UserAuthEntity::getUserId, userId)
@@ -100,6 +135,14 @@ public class PasswordLoginService {
         return auth == null || auth.getSessionVersion() == null ? 1 : auth.getSessionVersion();
     }
 
+    /**
+     * 转换为密码登录输出对象。
+     *
+     * @param user 用户实体
+     * @param book 账本实体
+     * @param tokens 令牌对
+     * @return 登录结果
+     */
     private WechatLoginOutDTO toOutput(UserEntity user, BookEntity book, TokenPair tokens) {
         return new WechatLoginOutDTO(
                 tokens.accessToken(),
@@ -110,6 +153,11 @@ public class PasswordLoginService {
         );
     }
 
+    /**
+     * 构建密码登录业务异常。
+     *
+     * @return 对应业务异常
+     */
     private BusinessException invalidLogin() {
         return new BusinessException(ErrorCodes.PASSWORD_LOGIN_FAILED, "账号或密码错误", HttpStatus.UNAUTHORIZED);
     }

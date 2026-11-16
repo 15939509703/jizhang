@@ -43,6 +43,17 @@ public class SavingsGoalService {
     private final AccountService accountService;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化储蓄目标服务。
+     *
+     * @param goalMapper 数据访问器
+     * @param contributionMapper 数据访问器
+     * @param accountMapper 数据访问器
+     * @param transactionService 关联服务
+     * @param transactionMapper 数据访问器
+     * @param accountService 关联服务
+     * @param bookAccessService 关联服务
+     */
     public SavingsGoalService(SavingsGoalMapper goalMapper, SavingsContributionMapper contributionMapper,
                               AccountMapper accountMapper, TransactionService transactionService,
                               TransactionMapper transactionMapper, AccountService accountService,
@@ -56,6 +67,14 @@ public class SavingsGoalService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 查询储蓄目标列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param status 状态
+     * @return 储蓄目标列表
+     */
     public List<SavingsGoalOutDTO> list(Long userId, Long bookId, String status) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.SAVINGS_GOALS);
         if (status != null && !STATUSES.contains(status)) {
@@ -67,12 +86,26 @@ public class SavingsGoalService {
                 .filter(goal -> status == null || status.equals(goal.status())).toList();
     }
 
+    /**
+     * 查询储蓄目标。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @return 储蓄目标输出对象
+     */
     public SavingsGoalOutDTO get(Long userId, Long id) {
         SavingsGoalEntity goal = requireGoal(id);
         bookAccessService.requireMenu(userId, goal.getBookId(), BookMenu.SAVINGS_GOALS);
         return toOutput(goal, true);
     }
 
+    /**
+     * 创建储蓄目标。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 储蓄目标输出对象
+     */
     @Transactional
     public SavingsGoalOutDTO create(Long userId, SavingsGoalCreateInDTO input) {
         bookAccessService.requireAction(userId, input.bookId(), BookAction.SAVINGS_GOALS_MANAGE);
@@ -97,6 +130,14 @@ public class SavingsGoalService {
         return toOutput(goal, true);
     }
 
+    /**
+     * 更新储蓄目标。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @param input 请求参数
+     * @return 储蓄目标输出对象
+     */
     @Transactional
     public SavingsGoalOutDTO update(Long userId, Long id, SavingsGoalUpdateInDTO input) {
         SavingsGoalEntity goal = requireLockedGoal(id);
@@ -109,6 +150,12 @@ public class SavingsGoalService {
         return toOutput(goal, true);
     }
 
+    /**
+     * 删除储蓄目标。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     */
     @Transactional
     public void delete(Long userId, Long id) {
         SavingsGoalEntity goal = requireLockedGoal(id);
@@ -120,6 +167,14 @@ public class SavingsGoalService {
         goalMapper.updateById(goal);
     }
 
+    /**
+     * 为目标增加手动存入记录。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @param input 请求参数
+     * @return 储蓄目标输出对象
+     */
     @Transactional
     public SavingsGoalOutDTO addContribution(Long userId, Long id, SavingsContributionInDTO input) {
         SavingsGoalEntity goal = goalMapper.selectByIdForUpdate(id);
@@ -173,6 +228,14 @@ public class SavingsGoalService {
         return toOutput(goal, true);
     }
 
+    /**
+     * 修改储蓄目标状态。
+     *
+     * @param userId 用户ID
+     * @param id 记录ID
+     * @param status 状态
+     * @return 储蓄目标输出对象
+     */
     @Transactional
     public SavingsGoalOutDTO changeStatus(Long userId, Long id, String status) {
         if (!Set.of("ACTIVE", "PAUSED", "CLOSED").contains(status)) {
@@ -189,6 +252,14 @@ public class SavingsGoalService {
         return toOutput(goal, true);
     }
 
+    /**
+     * 删除目标中的手动存入记录。
+     *
+     * @param userId 用户ID
+     * @param goalId 储蓄目标ID
+     * @param contributionId 存入记录ID
+     * @return 储蓄目标输出对象
+     */
     @Transactional
     public SavingsGoalOutDTO removeManualContribution(Long userId, Long goalId, Long contributionId) {
         SavingsGoalEntity goal = goalMapper.selectByIdForUpdate(goalId);
@@ -211,6 +282,12 @@ public class SavingsGoalService {
         return toOutput(goal, true);
     }
 
+    /**
+     * 根据累计存入金额更新目标完成状态。
+     *
+     * @param goal 目标实体
+     * @param userId 用户ID
+     */
     private void refreshCompletion(SavingsGoalEntity goal, Long userId) {
         BigDecimal completed = completed(goal);
         if (!"CLOSED".equals(goal.getStatus()) && !"PAUSED".equals(goal.getStatus())) {
@@ -221,6 +298,13 @@ public class SavingsGoalService {
         goalMapper.updateById(goal);
     }
 
+    /**
+     * 将更新参数应用到储蓄目标。
+     *
+     * @param goal 目标实体
+     * @param input 请求参数
+     * @param userId 用户ID
+     */
     private void applyUpdate(SavingsGoalEntity goal, SavingsGoalUpdateInDTO input, Long userId) {
         goal.setName(input.name().trim());
         goal.setDescription(trim(input.description()));
@@ -235,6 +319,13 @@ public class SavingsGoalService {
         goal.setModifier(String.valueOf(userId));
     }
 
+    /**
+     * 转换为储蓄目标输出对象。
+     *
+     * @param goal 目标实体
+     * @param includeContributions 是否启用
+     * @return 储蓄目标输出对象
+     */
     private SavingsGoalOutDTO toOutput(SavingsGoalEntity goal, boolean includeContributions) {
         BigDecimal completed = completed(goal);
         BigDecimal remaining = goal.getTargetAmount().subtract(completed).max(BigDecimal.ZERO);
@@ -253,11 +344,23 @@ public class SavingsGoalService {
                 && completed.compareTo(goal.getTargetAmount()) < 0, status, goal.getVersion(), contributions);
     }
 
+    /**
+     * 转换为存入记录。
+     *
+     * @param item 当前明细
+     * @return 储蓄目标输出对象
+     */
     private SavingsContributionOutDTO toContribution(SavingsContributionEntity item) {
         return new SavingsContributionOutDTO(item.getId(), item.getContributionNo(), item.getTransactionId(),
                 item.getContributionType(), item.getAmount(), item.getContributionDate(), item.getStatus(), item.getNote());
     }
 
+    /**
+     * 计算目标已完成金额。
+     *
+     * @param goal 目标实体
+     * @return 计算后的金额
+     */
     private BigDecimal completed(SavingsGoalEntity goal) {
         if (goal.getTargetAccountId() != null) {
             AccountEntity account = accountMapper.selectById(goal.getTargetAccountId());
@@ -266,6 +369,13 @@ public class SavingsGoalService {
         return goal.getInitialAmount().add(contributionMapper.sumEffective(goal.getId()));
     }
 
+    /**
+     * 计算达到目标所需的建议存入金额。
+     *
+     * @param remaining 剩余金额
+     * @param targetDate 日期
+     * @return 计算后的金额
+     */
     private BigDecimal suggestion(BigDecimal remaining, LocalDate targetDate) {
         if (targetDate == null || remaining.signum() == 0) return null;
         YearMonth current = YearMonth.now();
@@ -275,12 +385,24 @@ public class SavingsGoalService {
         return remaining.divide(BigDecimal.valueOf(months), 2, RoundingMode.UP);
     }
 
+    /**
+     * 查询并校验目标。
+     *
+     * @param id 记录ID
+     * @return 储蓄目标实体
+     */
     private SavingsGoalEntity requireGoal(Long id) {
         SavingsGoalEntity goal = goalMapper.selectById(id);
         if (goal == null || goal.getDeletedFlag() == 1) throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "储蓄目标不存在");
         return goal;
     }
 
+    /**
+     * 锁定并校验储蓄目标。
+     *
+     * @param id 记录ID
+     * @return 储蓄目标实体
+     */
     private SavingsGoalEntity requireLockedGoal(Long id) {
         SavingsGoalEntity goal = goalMapper.selectByIdForUpdate(id);
         if (goal == null || goal.getDeletedFlag() == 1) {
@@ -289,12 +411,24 @@ public class SavingsGoalService {
         return goal;
     }
 
+    /**
+     * 校验版本号。
+     *
+     * @param goal 目标实体
+     * @param version 期望版本号
+     */
     private void validateVersion(SavingsGoalEntity goal, Integer version) {
         if (!version.equals(goal.getVersion())) {
             throw new BusinessException(ErrorCodes.TRANSACTION_CONFLICT, "储蓄目标已发生变化，请刷新后重试");
         }
     }
 
+    /**
+     * 校验账户。
+     *
+     * @param bookId 账本ID
+     * @param accountId 账户ID
+     */
     private void validateAccount(Long bookId, Long accountId) {
         if (accountId == null) return;
         AccountEntity account = accountMapper.selectById(accountId);
@@ -304,11 +438,23 @@ public class SavingsGoalService {
         }
     }
 
+    /**
+     * 校验目标起止日期。
+     *
+     * @param startDate 起始日期
+     * @param targetDate 日期
+     */
     private void validateDates(LocalDate startDate, LocalDate targetDate) {
         if (targetDate != null && targetDate.isBefore(startDate)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "目标日期不能早于开始日期");
         }
     }
 
+    /**
+     * 清理文本首尾空白。
+     *
+     * @param value 原始值
+     * @return 处理后的文本
+     */
     private String trim(String value) { return value == null || value.isBlank() ? null : value.trim(); }
 }

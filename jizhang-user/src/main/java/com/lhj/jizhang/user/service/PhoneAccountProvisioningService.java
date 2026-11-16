@@ -33,6 +33,15 @@ public class PhoneAccountProvisioningService {
     private final BookService bookService;
     private final TokenService tokenService;
 
+    /**
+     * 初始化手机号账户服务。
+     *
+     * @param userMapper 数据访问器
+     * @param userAuthMapper 数据访问器
+     * @param credentialService 关联服务
+     * @param bookService 关联服务
+     * @param tokenService 关联服务
+     */
     public PhoneAccountProvisioningService(
             UserMapper userMapper,
             UserAuthMapper userAuthMapper,
@@ -47,6 +56,13 @@ public class PhoneAccountProvisioningService {
         this.tokenService = tokenService;
     }
 
+    /**
+     * 创建手机号账户。
+     *
+     * @param phone 手机号
+     * @param password 密码
+     * @return 登录结果
+     */
     @Transactional
     public WechatLoginOutDTO create(String phone, String password) {
         UserEntity user;
@@ -63,6 +79,12 @@ public class PhoneAccountProvisioningService {
         return toOutput(user, book, tokens);
     }
 
+    /**
+     * 创建用户。
+     *
+     * @param phone 手机号
+     * @return 手机号账户实体
+     */
     private UserEntity createUser(String phone) {
         UserEntity user = new UserEntity();
         user.setUserNo(BusinessIdGenerator.next("USR_"));
@@ -76,6 +98,13 @@ public class PhoneAccountProvisioningService {
         return user;
     }
 
+    /**
+     * 创建认证信息。
+     *
+     * @param userId 用户ID
+     * @param phone 手机号
+     * @return 用户认证关系实体
+     */
     private UserAuthEntity createAuth(Long userId, String phone) {
         UserAuthEntity auth = new UserAuthEntity();
         auth.setUserId(userId);
@@ -89,6 +118,14 @@ public class PhoneAccountProvisioningService {
         return auth;
     }
 
+    /**
+     * 转换为手机号账户输出对象。
+     *
+     * @param user 用户实体
+     * @param book 账本实体
+     * @param tokens 令牌对
+     * @return 登录结果
+     */
     private WechatLoginOutDTO toOutput(UserEntity user, BookEntity book, TokenPair tokens) {
         return new WechatLoginOutDTO(
                 tokens.accessToken(),
@@ -99,6 +136,11 @@ public class PhoneAccountProvisioningService {
         );
     }
 
+    /**
+     * 构建手机号账户业务异常。
+     *
+     * @return 对应业务异常
+     */
     private BusinessException phoneAlreadyRegistered() {
         return new BusinessException(
                 ErrorCodes.PHONE_ALREADY_REGISTERED,

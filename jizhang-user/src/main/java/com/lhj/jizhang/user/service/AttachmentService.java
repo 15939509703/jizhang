@@ -42,6 +42,14 @@ public class AttachmentService {
     private final BookAccessService bookAccessService;
     private final Path uploadRoot;
 
+    /**
+     * 初始化附件服务。
+     *
+     * @param attachmentMapper 数据访问器
+     * @param transactionMapper 数据访问器
+     * @param bookAccessService 关联服务
+     * @param uploadDir 上传文件目录
+     */
     public AttachmentService(AttachmentMapper attachmentMapper, TransactionMapper transactionMapper,
                              BookAccessService bookAccessService,
                              @Value("${app.storage.upload-dir:./data/uploads}") String uploadDir) {
@@ -51,6 +59,14 @@ public class AttachmentService {
         this.uploadRoot = Path.of(uploadDir).toAbsolutePath().normalize();
     }
 
+    /**
+     * 上传附件文件。
+     *
+     * @param userId 用户ID
+     * @param transactionId 账单ID
+     * @param file 上传文件
+     * @return 账单附件输出对象
+     */
     @Transactional
     public TransactionAttachmentOutDTO upload(Long userId, Long transactionId, MultipartFile file) {
         TransactionEntity transaction = requireTransaction(transactionId);
@@ -70,12 +86,26 @@ public class AttachmentService {
         return toOutput(attachment);
     }
 
+    /**
+     * 查询附件列表。
+     *
+     * @param userId 用户ID
+     * @param transactionId 账单ID
+     * @return 附件列表
+     */
     public List<TransactionAttachmentOutDTO> list(Long userId, Long transactionId) {
         TransactionEntity transaction = requireTransaction(transactionId);
         requireVisibleTransaction(userId, transaction);
         return listEntities(transactionId).stream().map(this::toOutput).toList();
     }
 
+    /**
+     * 补充附件关联信息。
+     *
+     * @param userId 用户ID
+     * @param transaction 账单实体
+     * @return 账单输出对象
+     */
     public TransactionOutDTO enrich(Long userId, TransactionOutDTO transaction) {
         List<TransactionAttachmentOutDTO> attachments = list(userId, transaction.id());
         return new TransactionOutDTO(transaction.id(), transaction.transactionNo(), transaction.requestId(),
@@ -85,6 +115,13 @@ public class AttachmentService {
                 transaction.status(), transaction.version(), transaction.entries(), attachments);
     }
 
+    /**
+     * 下载附件文件。
+     *
+     * @param userId 用户ID
+     * @param attachmentId 附件ID
+     * @return 附件结果
+     */
     public AttachmentDownload download(Long userId, Long attachmentId) {
         AttachmentEntity attachment = requireAttachment(attachmentId);
         TransactionEntity transaction = requireTransaction(attachment.getTransactionId());
@@ -94,6 +131,12 @@ public class AttachmentService {
                 attachment.getContentType());
     }
 
+    /**
+     * 删除附件。
+     *
+     * @param userId 用户ID
+     * @param attachmentId 附件ID
+     */
     @Transactional
     public void delete(Long userId, Long attachmentId) {
         AttachmentEntity attachment = requireAttachment(attachmentId);
@@ -110,6 +153,11 @@ public class AttachmentService {
         }
     }
 
+    /**
+     * 校验文件。
+     *
+     * @param file 上传文件
+     */
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCodes.ATTACHMENT_INVALID, "请选择图片");
@@ -122,6 +170,15 @@ public class AttachmentService {
         }
     }
 
+    /**
+     * 构建附件。
+     *
+     * @param userId 用户ID
+     * @param transactionId 账单ID
+     * @param file 上传文件
+     * @param objectKey 文件存储键
+     * @return 附件实体
+     */
     private AttachmentEntity buildAttachment(Long userId, Long transactionId, MultipartFile file, String objectKey) {
         AttachmentEntity attachment = new AttachmentEntity();
         attachment.setTransactionId(transactionId);
@@ -136,6 +193,12 @@ public class AttachmentService {
         return attachment;
     }
 
+    /**
+     * 生成可用于下载的安全文件名。
+     *
+     * @param fileName 文件名
+     * @return 处理后的文本
+     */
     private String safeFileName(String fileName) {
         if (fileName == null || fileName.isBlank()) {
             return "image";
@@ -144,6 +207,12 @@ public class AttachmentService {
         return normalized.length() > 255 ? normalized.substring(normalized.length() - 255) : normalized;
     }
 
+    /**
+     * 查询并校验账单。
+     *
+     * @param transactionId 账单ID
+     * @return 附件实体
+     */
     private TransactionEntity requireTransaction(Long transactionId) {
         TransactionEntity transaction = transactionMapper.selectById(transactionId);
         if (transaction == null) {
@@ -160,6 +229,12 @@ public class AttachmentService {
         }
     }
 
+    /**
+     * 查询并校验附件。
+     *
+     * @param attachmentId 附件ID
+     * @return 附件实体
+     */
     private AttachmentEntity requireAttachment(Long attachmentId) {
         AttachmentEntity attachment = attachmentMapper.selectById(attachmentId);
         if (attachment == null || attachment.getStatus() != 1) {
@@ -168,6 +243,12 @@ public class AttachmentService {
         return attachment;
     }
 
+    /**
+     * 查询账本中的附件实体。
+     *
+     * @param transactionId 账单ID
+     * @return 附件列表
+     */
     private List<AttachmentEntity> listEntities(Long transactionId) {
         return attachmentMapper.selectList(Wrappers.<AttachmentEntity>lambdaQuery()
                 .eq(AttachmentEntity::getTransactionId, transactionId)
@@ -175,6 +256,12 @@ public class AttachmentService {
                 .orderByAsc(AttachmentEntity::getId));
     }
 
+    /**
+     * 定位附件在本地存储中的文件。
+     *
+     * @param attachment 附件实体
+     * @return 文件路径
+     */
     private Path resolveStoredFile(AttachmentEntity attachment) {
         Path file = uploadRoot.resolve(attachment.getObjectKey()).normalize();
         if (!file.startsWith(uploadRoot) || !Files.isRegularFile(file)) {
@@ -183,6 +270,12 @@ public class AttachmentService {
         return file;
     }
 
+    /**
+     * 转换为附件输出对象。
+     *
+     * @param attachment 附件实体
+     * @return 账单附件输出对象
+     */
     private TransactionAttachmentOutDTO toOutput(AttachmentEntity attachment) {
         return new TransactionAttachmentOutDTO(attachment.getId(), attachment.getFileName(),
                 attachment.getContentType(), attachment.getFileSize(),

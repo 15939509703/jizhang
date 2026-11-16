@@ -37,6 +37,16 @@ public class ConsumptionReportService {
     private final BookAccessService accessService;
     private final BudgetService budgetService;
 
+    /**
+     * 初始化消费报告服务。
+     *
+     * @param transactionMapper 数据访问器
+     * @param reportMapper 数据访问器
+     * @param statisticsMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param accessService 关联服务
+     * @param budgetService 关联服务
+     */
     public ConsumptionReportService(TransactionMapper transactionMapper, ConsumptionReportMapper reportMapper,
                                     StatisticsMapper statisticsMapper,
                                     BookMapper bookMapper, BookAccessService accessService,
@@ -49,6 +59,14 @@ public class ConsumptionReportService {
         this.budgetService = budgetService;
     }
 
+    /**
+     * 查询消费报告。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param month 目标月份
+     * @return 消费报告输出对象
+     */
     public ConsumptionReportOutDTO get(Long userId, Long bookId, YearMonth month) {
         accessService.requireMenu(userId, bookId, BookMenu.CONSUMPTION_REPORT);
         BookEntity book = bookMapper.selectById(bookId);
@@ -117,6 +135,14 @@ public class ConsumptionReportService {
                 currentAmount, comparison(currentAmount, previousAmount));
     }
 
+    /**
+     * 汇总消费报告。
+     *
+     * @param bookId 账本ID
+     * @param month 目标月份
+     * @param zone 账本时区
+     * @return 消费报告结果
+     */
     private Summary summary(Long bookId, YearMonth month, ZoneId zone) {
         Range range = range(month, zone);
         TransactionSummaryAggregate aggregate = transactionMapper.selectSummary(bookId, range.start, range.end);
@@ -124,12 +150,26 @@ public class ConsumptionReportService {
                 value(aggregate == null ? null : aggregate.getExpenseAmount()));
     }
 
+    /**
+     * 计算本期与对比期的支出变化。
+     *
+     * @param current 当前月份或汇总
+     * @param base 金额
+     * @return 消费报告输出对象
+     */
     private ConsumptionComparisonOutDTO comparison(BigDecimal current, BigDecimal base) {
         BigDecimal change = current.subtract(base);
         BigDecimal rate = base.signum() == 0 ? null : change.divide(base, 4, RoundingMode.HALF_UP);
         return new ConsumptionComparisonOutDTO(base, change, rate);
     }
 
+    /**
+     * 计算目标月份在账本时区下的时间范围。
+     *
+     * @param month 目标月份
+     * @param zone 账本时区
+     * @return 时间范围
+     */
     private Range range(YearMonth month, ZoneId zone) {
         ZonedDateTime start = month.atDay(1).atStartOfDay(zone);
         ZonedDateTime end = month.plusMonths(1).atDay(1).atStartOfDay(zone);
@@ -137,6 +177,12 @@ public class ConsumptionReportService {
                 LocalDateTime.ofInstant(end.toInstant(), ZoneOffset.UTC));
     }
 
+    /**
+     * 将空金额转换为零。
+     *
+     * @param amount 金额
+     * @return 计算后的金额
+     */
     private BigDecimal value(BigDecimal amount) { return amount == null ? BigDecimal.ZERO : amount; }
     private record Range(LocalDateTime start, LocalDateTime end) { }
     private record Summary(BigDecimal income, BigDecimal expense) { }

@@ -35,6 +35,15 @@ public class TransactionCalendarService {
     private final BookMapper bookMapper;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化账单日历服务。
+     *
+     * @param transactionMapper 数据访问器
+     * @param ruleMapper 数据访问器
+     * @param executionMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param bookAccessService 关联服务
+     */
     public TransactionCalendarService(TransactionMapper transactionMapper, RecurringRuleMapper ruleMapper,
                                       RecurringExecutionMapper executionMapper, BookMapper bookMapper,
                                       BookAccessService bookAccessService) {
@@ -45,6 +54,14 @@ public class TransactionCalendarService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 查询账单日历。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param month 目标月份
+     * @return 账单日历输出对象
+     */
     public TransactionCalendarOutDTO get(Long userId, Long bookId, YearMonth month) {
         TransactionScope scope = bookAccessService.requireTransactionScope(userId, bookId);
         BookEntity book = requireBook(bookId);
@@ -62,6 +79,13 @@ public class TransactionCalendarService {
         return output(book, target, days);
     }
 
+    /**
+     * 聚合账单日历数据。
+     *
+     * @param transactions 账单集合
+     * @param zone 账本时区
+     * @return 账单日历映射
+     */
     private Map<LocalDate, DayAmounts> aggregate(List<TransactionEntity> transactions, ZoneId zone) {
         Map<LocalDate, DayAmounts> days = new LinkedHashMap<>();
         for (TransactionEntity transaction : transactions) {
@@ -77,6 +101,13 @@ public class TransactionCalendarService {
         return days;
     }
 
+    /**
+     * 将待执行规则金额合并到日历日期汇总。
+     *
+     * @param days 按日期聚合的数据
+     * @param bookId 账本ID
+     * @param month 目标月份
+     */
     private void mergePending(Map<LocalDate, DayAmounts> days, Long bookId, YearMonth month) {
         List<Long> ruleIds = ruleMapper.selectList(Wrappers.<RecurringRuleEntity>lambdaQuery()
                         .eq(RecurringRuleEntity::getBookId, bookId)
@@ -96,6 +127,14 @@ public class TransactionCalendarService {
         }
     }
 
+    /**
+     * 转换为账单日历输出对象。
+     *
+     * @param book 账本实体
+     * @param month 目标月份
+     * @param dayMap 按日期汇总的数据
+     * @return 账单日历输出对象
+     */
     private TransactionCalendarOutDTO output(BookEntity book, YearMonth month, Map<LocalDate, DayAmounts> dayMap) {
         BigDecimal income = BigDecimal.ZERO;
         BigDecimal expense = BigDecimal.ZERO;
@@ -115,6 +154,12 @@ public class TransactionCalendarService {
                 income, expense, count, days);
     }
 
+    /**
+     * 查询并校验账本存在。
+     *
+     * @param bookId 账本ID
+     * @return 账单日历实体
+     */
     private BookEntity requireBook(Long bookId) {
         BookEntity book = bookMapper.selectById(bookId);
         if (book == null || book.getStatus() != 1) {
@@ -123,6 +168,12 @@ public class TransactionCalendarService {
         return book;
     }
 
+    /**
+     * 将时间转换为 UTC 时间。
+     *
+     * @param dateTime 待转换时间
+     * @return 转换后的时间
+     */
     private LocalDateTime toUtc(java.time.ZonedDateTime dateTime) {
         return LocalDateTime.ofInstant(dateTime.toInstant(), ZoneOffset.UTC);
     }

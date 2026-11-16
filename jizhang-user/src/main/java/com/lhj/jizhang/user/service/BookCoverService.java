@@ -26,6 +26,14 @@ public class BookCoverService {
     private final BookService bookService;
     private final Path uploadRoot;
 
+    /**
+     * 初始化账本封面服务。
+     *
+     * @param bookMapper 数据访问器
+     * @param bookAccessService 关联服务
+     * @param bookService 关联服务
+     * @param uploadDir 上传文件目录
+     */
     public BookCoverService(BookMapper bookMapper, BookAccessService bookAccessService, BookService bookService,
                             @Value("${app.storage.upload-dir:./data/uploads}") String uploadDir) {
         this.bookMapper = bookMapper;

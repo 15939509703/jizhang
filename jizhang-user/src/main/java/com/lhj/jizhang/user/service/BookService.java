@@ -36,6 +36,15 @@ public class BookService {
     private final AccountMapper accountMapper;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化账本服务。
+     *
+     * @param bookMapper 数据访问器
+     * @param bookMemberMapper 数据访问器
+     * @param categoryMapper 数据访问器
+     * @param accountMapper 数据访问器
+     * @param bookAccessService 关联服务
+     */
     public BookService(
             BookMapper bookMapper,
             BookMemberMapper bookMemberMapper,
@@ -50,6 +59,12 @@ public class BookService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 查询账本列表。
+     *
+     * @param userId 用户ID
+     * @return 账本列表
+     */
     public List<BookOutDTO> list(Long userId) {
         List<BookMemberEntity> memberships = bookMemberMapper.selectList(Wrappers.<BookMemberEntity>lambdaQuery()
                 .eq(BookMemberEntity::getUserId, userId)
@@ -68,6 +83,13 @@ public class BookService {
                 .toList();
     }
 
+    /**
+     * 创建账本。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 账本输出对象
+     */
     @Transactional
     public BookOutDTO create(Long userId, BookCreateInDTO input) {
         BookEntity book = createBook(userId, input.name(), input.description(),
@@ -76,11 +98,25 @@ public class BookService {
         return toOutput(book, "OWNER", null);
     }
 
+    /**
+     * 创建用户默认账本。
+     *
+     * @param userId 用户ID
+     * @return 账本实体
+     */
     @Transactional
     public BookEntity createDefault(Long userId) {
         return createBook(userId, "个人账本", "默认账本", "CNY", "Asia/Shanghai");
     }
 
+    /**
+     * 更新账本。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param input 请求参数
+     * @return 账本输出对象
+     */
     @Transactional
     public BookOutDTO update(Long userId, Long bookId, BookUpdateInDTO input) {
         BookMemberEntity member = bookAccessService.requireAdmin(userId, bookId);
@@ -105,6 +141,16 @@ public class BookService {
         return toOutput(book, member.getRole(), normalizedRemark);
     }
 
+    /**
+     * 创建账本。
+     *
+     * @param userId 用户ID
+     * @param name 名称
+     * @param description 说明
+     * @param currencyCode 币种代码
+     * @param timezone 账本时区
+     * @return 账本实体
+     */
     private BookEntity createBook(Long userId, String name, String description, String currencyCode, String timezone) {
         validateTimezone(timezone);
         BookEntity book = buildBook(userId, name, description, currencyCode, timezone);
@@ -115,6 +161,16 @@ public class BookService {
         return book;
     }
 
+    /**
+     * 构建账本。
+     *
+     * @param userId 用户ID
+     * @param name 名称
+     * @param description 说明
+     * @param currencyCode 币种代码
+     * @param timezone 账本时区
+     * @return 账本实体
+     */
     private BookEntity buildBook(Long userId, String name, String description, String currencyCode, String timezone) {
         BookEntity book = new BookEntity();
         book.setBookNo(BusinessIdGenerator.next("BOOK_"));
@@ -130,6 +186,13 @@ public class BookService {
         return book;
     }
 
+    /**
+     * 构建账本所有人的成员关系。
+     *
+     * @param bookId 账本ID
+     * @param userId 用户ID
+     * @return 账本成员实体
+     */
     private BookMemberEntity buildOwnerMembership(Long bookId, Long userId) {
         BookMemberEntity member = new BookMemberEntity();
         member.setBookId(bookId);
@@ -142,6 +205,12 @@ public class BookService {
         return member;
     }
 
+    /**
+     * 将系统分类复制到账本。
+     *
+     * @param bookId 账本ID
+     * @param userId 用户ID
+     */
     private void copySystemCategories(Long bookId, Long userId) {
         categoryMapper.selectList(Wrappers.<CategoryEntity>lambdaQuery()
                         .eq(CategoryEntity::getScopeType, "SYSTEM")
@@ -151,6 +220,14 @@ public class BookService {
                 .forEach(categoryMapper::insert);
     }
 
+    /**
+     * 复制分类。
+     *
+     * @param template 模板数据
+     * @param bookId 账本ID
+     * @param userId 用户ID
+     * @return 账本实体
+     */
     private CategoryEntity copyCategory(CategoryEntity template, Long bookId, Long userId) {
         CategoryEntity category = new CategoryEntity();
         category.setCategoryNo(BusinessIdGenerator.next("CAT_"));
@@ -169,6 +246,13 @@ public class BookService {
         return category;
     }
 
+    /**
+     * 构建默认账户。
+     *
+     * @param bookId 账本ID
+     * @param userId 用户ID
+     * @return 账本实体
+     */
     private AccountEntity buildDefaultAccount(Long bookId, Long userId) {
         AccountEntity account = new AccountEntity();
         account.setAccountNo(BusinessIdGenerator.next("ACC_"));
@@ -188,11 +272,25 @@ public class BookService {
         return account;
     }
 
+    /**
+     * 转换为账本输出对象。
+     *
+     * @param book 账本实体
+     * @param role 成员角色
+     * @param remarkName 账本私有备注
+     * @return 账本输出对象
+     */
     BookOutDTO toOutput(BookEntity book, String role, String remarkName) {
         return new BookOutDTO(book.getId(), book.getBookNo(), book.getName(), book.getDescription(),
                 BookCoverService.publicUrl(book), book.getCurrencyCode(), book.getTimezone(), role, remarkName);
     }
 
+    /**
+     * 查询并校验账本存在。
+     *
+     * @param bookId 账本ID
+     * @return 账本实体
+     */
     BookEntity requireBook(Long bookId) {
         BookEntity book = bookMapper.selectById(bookId);
         if (book == null || book.getStatus() == null || book.getStatus() == 0) {
@@ -201,14 +299,32 @@ public class BookService {
         return book;
     }
 
+    /**
+     * 将空白文本转换为空值。
+     *
+     * @param value 原始值
+     * @return 处理后的文本
+     */
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    /**
+     * 为缺失值设置默认值。
+     *
+     * @param value 原始值
+     * @param fallback 默认值
+     * @return 处理后的文本
+     */
     private String valueOrDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
     }
 
+    /**
+     * 校验时区。
+     *
+     * @param timezone 账本时区
+     */
     private void validateTimezone(String timezone) {
         try {
             java.time.ZoneId.of(timezone);

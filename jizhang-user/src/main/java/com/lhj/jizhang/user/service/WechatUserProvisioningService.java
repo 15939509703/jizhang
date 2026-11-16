@@ -33,6 +33,16 @@ public class WechatUserProvisioningService {
     private final BookService bookService;
     private final PhoneBindingService phoneBindingService;
 
+    /**
+     * 初始化微信用户服务。
+     *
+     * @param userMapper 数据访问器
+     * @param userAuthMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param bookMemberMapper 数据访问器
+     * @param bookService 关联服务
+     * @param phoneBindingService 关联服务
+     */
     public WechatUserProvisioningService(
             UserMapper userMapper,
             UserAuthMapper userAuthMapper,
@@ -84,6 +94,12 @@ public class WechatUserProvisioningService {
         return new LoginUserContext(user, auth, ensureDefaultBook(user));
     }
 
+    /**
+     * 查询认证信息。
+     *
+     * @param openid 微信 openid
+     * @return 用户认证关系实体
+     */
     private UserAuthEntity findAuth(String openid) {
         return userAuthMapper.selectOne(Wrappers.<UserAuthEntity>lambdaQuery()
                 .eq(UserAuthEntity::getProvider, WECHAT_PROVIDER)
@@ -91,6 +107,13 @@ public class WechatUserProvisioningService {
                 .eq(UserAuthEntity::getStatus, 1));
     }
 
+    /**
+     * 使用已有微信身份登录用户。
+     *
+     * @param auth 认证关系实体
+     * @param input 请求参数
+     * @return 登录用户上下文
+     */
     private LoginUserContext loginExistingUser(UserAuthEntity auth, WechatLoginInDTO input) {
         UserEntity user = userMapper.selectById(auth.getUserId());
         if (user == null || user.getStatus() != 1) {
@@ -101,6 +124,13 @@ public class WechatUserProvisioningService {
         return new LoginUserContext(user, auth, defaultBook);
     }
 
+    /**
+     * 创建微信用户及其默认账本。
+     *
+     * @param session 微信会话
+     * @param input 请求参数
+     * @return 登录用户上下文
+     */
     private LoginUserContext createNewUser(WechatSession session, WechatLoginInDTO input) {
         UserEntity user = buildUser(input);
         userMapper.insert(user);
@@ -110,6 +140,12 @@ public class WechatUserProvisioningService {
         return new LoginUserContext(user, auth, defaultBook);
     }
 
+    /**
+     * 构建用户。
+     *
+     * @param input 请求参数
+     * @return 微信用户实体
+     */
     private UserEntity buildUser(WechatLoginInDTO input) {
         UserEntity user = new UserEntity();
         user.setUserNo(BusinessIdGenerator.next("USR_"));
@@ -122,6 +158,13 @@ public class WechatUserProvisioningService {
         return user;
     }
 
+    /**
+     * 构建认证信息。
+     *
+     * @param userId 用户ID
+     * @param session 微信会话
+     * @return 用户认证关系实体
+     */
     private UserAuthEntity buildAuth(Long userId, WechatSession session) {
         UserAuthEntity auth = new UserAuthEntity();
         auth.setUserId(userId);
@@ -135,6 +178,12 @@ public class WechatUserProvisioningService {
         return auth;
     }
 
+    /**
+     * 更新微信用户资料。
+     *
+     * @param user 用户实体
+     * @param input 请求参数
+     */
     private void updateUserProfile(UserEntity user, WechatLoginInDTO input) {
         user.setLastLoginTime(LocalDateTime.now(ZoneOffset.UTC));
         if (!UserAvatarService.hasCustomAvatar(user) && input.avatarUrl() != null && !input.avatarUrl().isBlank()) {
@@ -144,6 +193,12 @@ public class WechatUserProvisioningService {
         userMapper.updateById(user);
     }
 
+    /**
+     * 确保默认账本。
+     *
+     * @param user 用户实体
+     * @return 微信用户实体
+     */
     private BookEntity ensureDefaultBook(UserEntity user) {
         BookMemberEntity membership = bookMemberMapper.selectOne(Wrappers.<BookMemberEntity>lambdaQuery()
                 .eq(BookMemberEntity::getUserId, user.getId())
@@ -160,14 +215,32 @@ public class WechatUserProvisioningService {
         return book;
     }
 
+    /**
+     * 创建默认账本。
+     *
+     * @param user 用户实体
+     * @return 微信用户实体
+     */
     private BookEntity createDefaultBook(UserEntity user) {
         return bookService.createDefault(user.getId());
     }
 
+    /**
+     * 为缺失值设置默认值。
+     *
+     * @param value 原始值
+     * @param fallback 默认值
+     * @return 处理后的文本
+     */
     private String valueOrDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
     }
 
+    /**
+     * 填写用户实体的创建人与修改人。
+     *
+     * @param user 用户实体
+     */
     private void fillOperator(UserEntity user) {
         user.setCreator(SYSTEM_OPERATOR);
         user.setModifier(SYSTEM_OPERATOR);

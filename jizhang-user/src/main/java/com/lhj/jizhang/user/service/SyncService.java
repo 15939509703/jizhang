@@ -48,6 +48,19 @@ public class SyncService {
     private final BookAccessService bookAccessService;
     private final LoanService loanService;
 
+    /**
+     * 初始化数据同步服务。
+     *
+     * @param bookMapper 数据访问器
+     * @param categoryMapper 数据访问器
+     * @param accountMapper 数据访问器
+     * @param transactionMapper 数据访问器
+     * @param accountEntryMapper 数据访问器
+     * @param budgetMapper 数据访问器
+     * @param loanRecordMapper 数据访问器
+     * @param bookAccessService 关联服务
+     * @param loanService 关联服务
+     */
     public SyncService(
             BookMapper bookMapper,
             CategoryMapper categoryMapper,
@@ -70,6 +83,14 @@ public class SyncService {
         this.loanService = loanService;
     }
 
+    /**
+     * 读取指定同步游标之后的变更。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param cursor 同步游标
+     * @return 数据同步输出对象
+     */
     public SyncChangesOutDTO changes(Long userId, Long bookId, Instant cursor) {
         BookMemberEntity member = bookAccessService.requireMember(userId, bookId);
         for (BookMenu menu : List.of(BookMenu.BILLS, BookMenu.CATEGORIES, BookMenu.ACCOUNTS,
@@ -93,6 +114,13 @@ public class SyncService {
                 loans.stream().map(loanService::toOutput).toList());
     }
 
+    /**
+     * 查询游标之后修改的分类。
+     *
+     * @param bookId 账本ID
+     * @param since 同步起始时间
+     * @return 数据同步列表
+     */
     private List<CategoryEntity> modifiedCategories(Long bookId, LocalDateTime since) {
         return categoryMapper.selectList(Wrappers.<CategoryEntity>lambdaQuery()
                 .eq(CategoryEntity::getBookId, bookId)
@@ -101,6 +129,13 @@ public class SyncService {
                 .last("LIMIT 200"));
     }
 
+    /**
+     * 查询游标之后修改的账户。
+     *
+     * @param bookId 账本ID
+     * @param since 同步起始时间
+     * @return 数据同步列表
+     */
     private List<AccountEntity> modifiedAccounts(Long bookId, LocalDateTime since) {
         return accountMapper.selectList(Wrappers.<AccountEntity>lambdaQuery()
                 .eq(AccountEntity::getBookId, bookId)
@@ -109,6 +144,13 @@ public class SyncService {
                 .last("LIMIT 200"));
     }
 
+    /**
+     * 查询游标之后修改的账单。
+     *
+     * @param bookId 账本ID
+     * @param since 同步起始时间
+     * @return 数据同步列表
+     */
     private List<TransactionEntity> modifiedTransactions(Long bookId, LocalDateTime since) {
         return transactionMapper.selectList(Wrappers.<TransactionEntity>lambdaQuery()
                 .eq(TransactionEntity::getBookId, bookId)
@@ -117,6 +159,13 @@ public class SyncService {
                 .last("LIMIT 200"));
     }
 
+    /**
+     * 查询游标之后修改的预算。
+     *
+     * @param bookId 账本ID
+     * @param since 同步起始时间
+     * @return 数据同步列表
+     */
     private List<BudgetEntity> modifiedBudgets(Long bookId, LocalDateTime since) {
         return budgetMapper.selectList(Wrappers.<BudgetEntity>lambdaQuery()
                 .eq(BudgetEntity::getBookId, bookId)
@@ -125,6 +174,13 @@ public class SyncService {
                 .last("LIMIT 200"));
     }
 
+    /**
+     * 查询游标之后修改的借还记录。
+     *
+     * @param bookId 账本ID
+     * @param since 同步起始时间
+     * @return 数据同步列表
+     */
     private List<LoanRecordEntity> modifiedLoans(Long bookId, LocalDateTime since) {
         return loanRecordMapper.selectList(Wrappers.<LoanRecordEntity>lambdaQuery()
                 .eq(LoanRecordEntity::getBookId, bookId)
@@ -133,12 +189,24 @@ public class SyncService {
                 .last("LIMIT 200"));
     }
 
+    /**
+     * 转换同步账单输出列表。
+     *
+     * @param transactions 账单集合
+     * @return 数据同步列表
+     */
     private List<TransactionOutDTO> toTransactions(List<TransactionEntity> transactions) {
         Map<Long, List<AccountEntryEntity>> entries = loadEntries(transactions);
         return transactions.stream().map(transaction -> toTransaction(transaction, entries.get(transaction.getId())))
                 .toList();
     }
 
+    /**
+     * 加载流水。
+     *
+     * @param transactions 账单集合
+     * @return 数据同步映射
+     */
     private Map<Long, List<AccountEntryEntity>> loadEntries(List<TransactionEntity> transactions) {
         if (transactions.isEmpty()) {
             return Map.of();
@@ -151,6 +219,13 @@ public class SyncService {
                         Collectors.toList()));
     }
 
+    /**
+     * 转换为同步账单输出对象。
+     *
+     * @param transaction 账单实体
+     * @param entries 流水集合
+     * @return 账单输出对象
+     */
     private TransactionOutDTO toTransaction(TransactionEntity transaction, List<AccountEntryEntity> entries) {
         List<TransactionEntryOutDTO> entryOutputs = entries == null ? List.of() : entries.stream()
                 .sorted(Comparator.comparing(AccountEntryEntity::getId))
@@ -164,17 +239,36 @@ public class SyncService {
                 transaction.getNote(), transaction.getStatus(), transaction.getVersion(), entryOutputs, List.of());
     }
 
+    /**
+     * 转换为同步账本输出对象。
+     *
+     * @param book 账本实体
+     * @param member 成员实体
+     * @return 账本输出对象
+     */
     private BookOutDTO toBook(BookEntity book, BookMemberEntity member) {
         return new BookOutDTO(book.getId(), book.getBookNo(), book.getName(), book.getDescription(),
                 book.getCoverUrl(), book.getCurrencyCode(), book.getTimezone(), member.getRole(), member.getRemarkName());
     }
 
+    /**
+     * 转换为同步分类输出对象。
+     *
+     * @param category 分类实体
+     * @return 分类输出对象
+     */
     private CategoryOutDTO toCategory(CategoryEntity category) {
         return new CategoryOutDTO(category.getId(), category.getCategoryNo(), category.getCategoryType(),
                 category.getParentId(), category.getName(), category.getIcon(), category.getColor(),
                 category.getSortNo(), category.getHiddenFlag() == 1, category.getSystemFlag() == 1);
     }
 
+    /**
+     * 转换为同步账户输出对象。
+     *
+     * @param account 账户实体
+     * @return 账户输出对象
+     */
     private AccountOutDTO toAccount(AccountEntity account) {
         return new AccountOutDTO(account.getId(), account.getAccountNo(), account.getBookId(), account.getName(),
                 account.getAccountType(), account.getAccountNature(), account.getInitialBalance(),
@@ -182,20 +276,45 @@ public class SyncService {
                 account.getStatus(), account.getVersion(), toInstant(account.getCreatedTime()));
     }
 
+    /**
+     * 转换为同步预算输出对象。
+     *
+     * @param budget 预算实体
+     * @return 预算同步输出对象
+     */
     private BudgetSyncOutDTO toBudget(BudgetEntity budget) {
         return new BudgetSyncOutDTO(budget.getId(), budget.getBudgetNo(), budget.getBookId(), budget.getBudgetMonth(),
                 budget.getTotalLimit(), budget.getWarningRate(), budget.getStatus(), budget.getVersion(),
                 toInstant(budget.getModifiedTime()));
     }
 
+    /**
+     * 判断记录是否晚于同步游标更新。
+     *
+     * @param modifiedTime 记录修改时间
+     * @param since 同步起始时间
+     * @return 条件是否成立
+     */
     private boolean isChanged(LocalDateTime modifiedTime, LocalDateTime since) {
         return modifiedTime != null && modifiedTime.isAfter(since);
     }
 
+    /**
+     * 将时间转换为 UTC 时间。
+     *
+     * @param instant 待转换时间戳
+     * @return 转换后的时间
+     */
     private LocalDateTime toUtc(Instant instant) {
         return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
+    /**
+     * 将数据库时间转换为时间戳。
+     *
+     * @param time 待转换时间
+     * @return 转换后的时间
+     */
     private Instant toInstant(LocalDateTime time) {
         return time == null ? null : time.toInstant(ZoneOffset.UTC);
     }

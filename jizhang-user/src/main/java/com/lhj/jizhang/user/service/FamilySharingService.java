@@ -52,6 +52,17 @@ public class FamilySharingService {
     private final ObjectMapper objectMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
+    /**
+     * 初始化家庭共享服务。
+     *
+     * @param invitationMapper 数据访问器
+     * @param memberMapper 数据访问器
+     * @param auditMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param userMapper 数据访问器
+     * @param accessService 关联服务
+     * @param objectMapper 数据访问器
+     */
     public FamilySharingService(BookInvitationMapper invitationMapper, BookMemberMapper memberMapper,
                                 BookAuditLogMapper auditMapper, BookMapper bookMapper, UserMapper userMapper,
                                 BookAccessService accessService, ObjectMapper objectMapper) {
@@ -64,6 +75,14 @@ public class FamilySharingService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 创建邀请。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param input 请求参数
+     * @return 账本邀请输出对象
+     */
     @Transactional
     public BookInvitationOutDTO createInvitation(Long userId, Long bookId, BookInvitationCreateInDTO input) {
         BookMemberEntity actor = accessService.requirePermission(userId, bookId, BookPermission.MANAGE_MEMBERS);
@@ -92,6 +111,13 @@ public class FamilySharingService {
         return output(invitation, token);
     }
 
+    /**
+     * 预览邀请对应的账本和成员权限。
+     *
+     * @param userId 用户ID
+     * @param token 令牌
+     * @return 账本邀请输出对象
+     */
     public BookInvitationOutDTO preview(Long userId, String token) {
         BookInvitationEntity invitation = invitationMapper.selectOne(Wrappers.<BookInvitationEntity>lambdaQuery()
                 .eq(BookInvitationEntity::getTokenHash, hash(token)));
@@ -100,6 +126,13 @@ public class FamilySharingService {
         return output(invitation, null);
     }
 
+    /**
+     * 接受账本邀请并建立成员关系。
+     *
+     * @param userId 用户ID
+     * @param token 令牌
+     * @return 账本成员输出对象
+     */
     @Transactional
     public BookMemberOutDTO accept(Long userId, String token) {
         BookInvitationEntity invitation = invitationMapper.selectByHashForUpdate(hash(token));
@@ -150,6 +183,13 @@ public class FamilySharingService {
                 member.getRole(), member.getStatus());
     }
 
+    /**
+     * 撤销尚未使用的账本邀请。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param invitationId 邀请ID
+     */
     @Transactional
     public void revoke(Long userId, Long bookId, Long invitationId) {
         accessService.requirePermission(userId, bookId, BookPermission.MANAGE_MEMBERS);
@@ -163,6 +203,15 @@ public class FamilySharingService {
         }
     }
 
+    /**
+     * 更新账本成员的共享权限。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param memberId 成员ID
+     * @param input 请求参数
+     * @return 账本成员输出对象
+     */
     @Transactional
     public BookMemberOutDTO updatePermissions(Long userId, Long bookId, Long memberId,
                                               BookMemberPermissionsInDTO input) {
@@ -170,6 +219,13 @@ public class FamilySharingService {
         throw upgradeRequired();
     }
 
+    /**
+     * 查询账本成员权限审计日志。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 家庭共享列表
+     */
     public List<BookAuditLogOutDTO> auditLogs(Long userId, Long bookId) {
         accessService.requirePermission(userId, bookId, BookPermission.MANAGE_MEMBERS);
         List<BookAuditLogEntity> logs = auditMapper.selectList(Wrappers.<BookAuditLogEntity>lambdaQuery()
@@ -188,6 +244,13 @@ public class FamilySharingService {
         }).toList();
     }
 
+    /**
+     * 转换为账本邀请输出对象。
+     *
+     * @param invitation 邀请实体
+     * @param token 令牌
+     * @return 账本邀请输出对象
+     */
     private BookInvitationOutDTO output(BookInvitationEntity invitation, String token) {
         BookEntity book = bookMapper.selectById(invitation.getBookId());
         UserEntity inviter = userMapper.selectById(invitation.getInviterUserId());
@@ -270,12 +333,28 @@ public class FamilySharingService {
                 HttpStatus.CONFLICT);
     }
 
+    /**
+     * 记录家庭共享审计日志。
+     *
+     * @param bookId 账本ID
+     * @param userId 用户ID
+     * @param action 操作类型
+     * @param type 类型
+     * @param objectId 被操作对象ID
+     * @param summary 摘要
+     */
     private void audit(Long bookId, Long userId, String action, String type, Long objectId, String summary) {
         BookAuditLogEntity log = new BookAuditLogEntity();
         log.setBookId(bookId); log.setOperatorUserId(userId); log.setAction(action); log.setObjectType(type);
         log.setObjectId(objectId); log.setSummary(summary); auditMapper.insert(log);
     }
 
+    /**
+     * 计算内容摘要。
+     *
+     * @param token 令牌
+     * @return 处理后的文本
+     */
     private String hash(String token) {
         if (token == null || token.isBlank() || token.length() > 128) throw invalidInvitation();
         try {
@@ -286,6 +365,11 @@ public class FamilySharingService {
         }
     }
 
+    /**
+     * 构建家庭共享业务异常。
+     *
+     * @return 对应业务异常
+     */
     private BusinessException invalidInvitation() {
         return new BusinessException(ErrorCodes.MEMBER_INVALID, "邀请不存在、已使用或已过期");
     }

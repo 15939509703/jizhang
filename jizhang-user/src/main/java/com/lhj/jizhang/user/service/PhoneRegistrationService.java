@@ -22,6 +22,14 @@ public class PhoneRegistrationService {
     private final PasswordLoginService passwordLoginService;
     private final PhoneAccountProvisioningService provisioningService;
 
+    /**
+     * 初始化手机号注册服务。
+     *
+     * @param userAuthMapper 数据访问器
+     * @param credentialService 关联服务
+     * @param passwordLoginService 关联服务
+     * @param provisioningService 关联服务
+     */
     public PhoneRegistrationService(
             UserAuthMapper userAuthMapper,
             PasswordCredentialService credentialService,
@@ -34,6 +42,12 @@ public class PhoneRegistrationService {
         this.provisioningService = provisioningService;
     }
 
+    /**
+     * 注册手机号账户或关联已有用户。
+     *
+     * @param input 请求参数
+     * @return 登录结果
+     */
     public WechatLoginOutDTO register(PhoneRegisterInDTO input) {
         String phone = input.phone().trim();
         UserAuthEntity phoneAuth = findPhoneAuth(phone);
@@ -53,12 +67,24 @@ public class PhoneRegistrationService {
         return passwordLoginService.login(new PasswordLoginInDTO(phone, input.password()));
     }
 
+    /**
+     * 查询手机号认证信息。
+     *
+     * @param phone 手机号
+     * @return 用户认证关系实体
+     */
     private UserAuthEntity findPhoneAuth(String phone) {
         return userAuthMapper.selectOne(Wrappers.<UserAuthEntity>lambdaQuery()
                 .eq(UserAuthEntity::getProvider, PHONE_PROVIDER)
                 .eq(UserAuthEntity::getOpenid, phone));
     }
 
+    /**
+     * 判断用户是否已有微信认证关系。
+     *
+     * @param userId 用户ID
+     * @return 条件是否成立
+     */
     private boolean hasWechatAuth(Long userId) {
         return userAuthMapper.selectCount(Wrappers.<UserAuthEntity>lambdaQuery()
                 .eq(UserAuthEntity::getUserId, userId)
@@ -66,10 +92,21 @@ public class PhoneRegistrationService {
                 .eq(UserAuthEntity::getStatus, 1)) > 0;
     }
 
+    /**
+     * 判断手机号认证关系是否有效。
+     *
+     * @param auth 认证关系实体
+     * @return 条件是否成立
+     */
     private boolean isActive(UserAuthEntity auth) {
         return auth.getStatus() != null && auth.getStatus() == 1;
     }
 
+    /**
+     * 构建手机号注册业务异常。
+     *
+     * @return 对应业务异常
+     */
     private BusinessException phoneAlreadyRegistered() {
         return new BusinessException(
                 ErrorCodes.PHONE_ALREADY_REGISTERED,
@@ -78,6 +115,11 @@ public class PhoneRegistrationService {
         );
     }
 
+    /**
+     * 构建手机号注册业务异常。
+     *
+     * @return 对应业务异常
+     */
     private BusinessException invalidBinding() {
         return new BusinessException(
                 ErrorCodes.PHONE_BINDING_INVALID,

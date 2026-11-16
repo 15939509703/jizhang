@@ -6,6 +6,9 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 
 public final class RecurringDateCalculator {
+    /**
+     * 初始化重复规则日期计算器。
+     */
     private RecurringDateCalculator() {
     }
 

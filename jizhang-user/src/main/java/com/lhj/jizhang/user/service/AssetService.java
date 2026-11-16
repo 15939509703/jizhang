@@ -41,6 +41,16 @@ public class AssetService {
     private final LoanRecordMapper loanRecordMapper;
     private final TransactionMapper transactionMapper;
 
+    /**
+     * 初始化资产服务。
+     *
+     * @param accountMapper 数据访问器
+     * @param accountEntryMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param bookAccessService 关联服务
+     * @param loanRecordMapper 数据访问器
+     * @param transactionMapper 数据访问器
+     */
     public AssetService(AccountMapper accountMapper, AccountEntryMapper accountEntryMapper,
                         BookMapper bookMapper, BookAccessService bookAccessService,
                         LoanRecordMapper loanRecordMapper, TransactionMapper transactionMapper) {
@@ -52,6 +62,13 @@ public class AssetService {
         this.transactionMapper = transactionMapper;
     }
 
+    /**
+     * 汇总资产。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 资产输出对象
+     */
     public AssetSummaryOutDTO summary(Long userId, Long bookId) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.ASSETS);
         BookEntity book = requireBook(bookId);
@@ -71,6 +88,14 @@ public class AssetService {
                 netAssets, mapAccounts(accounts, "ASSET"), mapAccounts(accounts, "LIABILITY"));
     }
 
+    /**
+     * 统计指定月份范围内的资产趋势。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param months 统计月数
+     * @return 资产输出对象
+     */
     public AssetTrendOutDTO trend(Long userId, Long bookId, Integer months) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.ASSETS);
         BookEntity book = requireBook(bookId);
@@ -95,6 +120,13 @@ public class AssetService {
         return new AssetTrendOutDTO(bookId, book.getCurrencyCode(), points);
     }
 
+    /**
+     * 生成资产趋势所需的月份列表。
+     *
+     * @param current 当前月份或汇总
+     * @param count 数量
+     * @return 资产列表
+     */
     private List<YearMonth> targetMonths(YearMonth current, int count) {
         List<YearMonth> months = new ArrayList<>();
         for (int index = count - 1; index >= 0; index--) {
@@ -103,6 +135,12 @@ public class AssetService {
         return months;
     }
 
+    /**
+     * 查询当前计入资产统计的账户。
+     *
+     * @param bookId 账本ID
+     * @return 资产列表
+     */
     private List<AccountEntity> currentAccounts(Long bookId) {
         return accountMapper.selectList(Wrappers.<AccountEntity>lambdaQuery()
                 .eq(AccountEntity::getBookId, bookId)
@@ -112,6 +150,12 @@ public class AssetService {
                 .orderByAsc(AccountEntity::getSortNo, AccountEntity::getId));
     }
 
+    /**
+     * 查询历史资产统计涉及的账户。
+     *
+     * @param bookId 账本ID
+     * @return 资产列表
+     */
     private List<AccountEntity> allIncludedAccounts(Long bookId) {
         return accountMapper.selectList(Wrappers.<AccountEntity>lambdaQuery()
                 .eq(AccountEntity::getBookId, bookId)
@@ -119,6 +163,13 @@ public class AssetService {
                 .orderByAsc(AccountEntity::getId));
     }
 
+    /**
+     * 加载流水。
+     *
+     * @param accounts 账户集合
+     * @param earliest 时间
+     * @return 资产映射
+     */
     private Map<Long, List<AccountEntryEntity>> loadEntries(List<AccountEntity> accounts, Instant earliest) {
         if (accounts.isEmpty()) {
             return Map.of();
@@ -178,6 +229,14 @@ public class AssetService {
         return loan.getTotalAmount().subtract(loan.getRepaidAmount()).add(laterRepayments);
     }
 
+    /**
+     * 计算指定时点的净资产。
+     *
+     * @param accounts 账户集合
+     * @param entries 流水集合
+     * @param cutoff 时间
+     * @return 计算后的金额
+     */
     private BigDecimal netAssetsAt(List<AccountEntity> accounts,
                                    Map<Long, List<AccountEntryEntity>> entries, Instant cutoff) {
         BigDecimal totalAssets = BigDecimal.ZERO;
@@ -199,14 +258,34 @@ public class AssetService {
         return totalAssets.subtract(liabilities);
     }
 
+    /**
+     * 计算账户负债金额。
+     *
+     * @param account 账户实体
+     * @param availableBalance 可用余额
+     * @return 计算后的金额
+     */
     private BigDecimal liabilityAmount(AccountEntity account, BigDecimal availableBalance) {
         return creditLimit(account).subtract(availableBalance).max(BigDecimal.ZERO);
     }
 
+    /**
+     * 读取账户信用额度。
+     *
+     * @param account 账户实体
+     * @return 计算后的金额
+     */
     private BigDecimal creditLimit(AccountEntity account) {
         return account.getInitialBalance() == null ? BigDecimal.ZERO : account.getInitialBalance();
     }
 
+    /**
+     * 判断账户在指定时点是否已存在。
+     *
+     * @param account 账户实体
+     * @param cutoff 时间
+     * @return 条件是否成立
+     */
     private boolean existedAt(AccountEntity account, Instant cutoff) {
         Instant createdAt = account.getCreatedTime() == null ? Instant.EPOCH
                 : account.getCreatedTime().toInstant(ZoneOffset.UTC);
@@ -215,10 +294,24 @@ public class AssetService {
         return !createdAt.isAfter(cutoff) && (archivedAt == null || archivedAt.isAfter(cutoff));
     }
 
+    /**
+     * 计算账本时区下的月末时间。
+     *
+     * @param month 目标月份
+     * @param zone 账本时区
+     * @return 转换后的时间
+     */
     private Instant monthEnd(YearMonth month, ZoneId zone) {
         return month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().minusNanos(1);
     }
 
+    /**
+     * 将账户实体转换为资产明细。
+     *
+     * @param accounts 账户集合
+     * @param nature 账户性质
+     * @return 资产列表
+     */
     private List<AssetAccountOutDTO> mapAccounts(List<AccountEntity> accounts, String nature) {
         return accounts.stream().filter(account -> nature.equals(account.getAccountNature()))
                 .map(account -> new AssetAccountOutDTO(account.getId(), account.getName(), account.getAccountType(),
@@ -229,6 +322,12 @@ public class AssetService {
                                 : account.getModifiedTime().toInstant(ZoneOffset.UTC))).toList();
     }
 
+    /**
+     * 查询并校验账本存在。
+     *
+     * @param bookId 账本ID
+     * @return 资产实体
+     */
     private BookEntity requireBook(Long bookId) {
         BookEntity book = bookMapper.selectById(bookId);
         if (book == null || book.getStatus() != 1) {

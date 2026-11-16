@@ -22,6 +22,13 @@ public class TransactionSummaryService {
     private final BookMapper bookMapper;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化账单汇总服务。
+     *
+     * @param transactionMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param bookAccessService 关联服务
+     */
     public TransactionSummaryService(
             TransactionMapper transactionMapper,
             BookMapper bookMapper,
@@ -32,6 +39,14 @@ public class TransactionSummaryService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 汇总指定月份的账单收支。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param month 目标月份
+     * @return 账单汇总输出对象
+     */
     public TransactionSummaryOutDTO summarize(Long userId, Long bookId, YearMonth month) {
         TransactionScope scope = bookAccessService.requireTransactionScope(userId, bookId);
         BookEntity book = requireBook(bookId);
@@ -47,6 +62,12 @@ public class TransactionSummaryService {
                 income.subtract(expense), book.getCurrencyCode());
     }
 
+    /**
+     * 查询并校验账本存在。
+     *
+     * @param bookId 账本ID
+     * @return 账单汇总实体
+     */
     private BookEntity requireBook(Long bookId) {
         BookEntity book = bookMapper.selectById(bookId);
         if (book == null || book.getStatus() == null || book.getStatus() == 0) {
@@ -55,10 +76,22 @@ public class TransactionSummaryService {
         return book;
     }
 
+    /**
+     * 将时间转换为 UTC 时间。
+     *
+     * @param dateTime 待转换时间
+     * @return 转换后的时间
+     */
     private LocalDateTime toUtc(java.time.ZonedDateTime dateTime) {
         return LocalDateTime.ofInstant(dateTime.toInstant(), ZoneOffset.UTC);
     }
 
+    /**
+     * 将空金额转换为零。
+     *
+     * @param value 原始值
+     * @return 计算后的金额
+     */
     private BigDecimal valueOrZero(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }

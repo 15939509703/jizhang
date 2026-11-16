@@ -25,11 +25,26 @@ public class CategoryService {
     private final CategoryMapper categoryMapper;
     private final BookAccessService bookAccessService;
 
+    /**
+     * 初始化分类服务。
+     *
+     * @param categoryMapper 数据访问器
+     * @param bookAccessService 关联服务
+     */
     public CategoryService(CategoryMapper categoryMapper, BookAccessService bookAccessService) {
         this.categoryMapper = categoryMapper;
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 查询分类列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param type 类型
+     * @param includeHidden 是否启用
+     * @return 分类列表
+     */
     public List<CategoryOutDTO> list(Long userId, Long bookId, String type, boolean includeHidden) {
         bookAccessService.requireMenu(userId, bookId, BookMenu.CATEGORIES);
         validateType(type);
@@ -46,6 +61,13 @@ public class CategoryService {
         return categoryMapper.selectList(query).stream().map(this::toOutput).toList();
     }
 
+    /**
+     * 创建分类。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 分类输出对象
+     */
     @Transactional
     public CategoryOutDTO create(Long userId, CategoryCreateInDTO input) {
         bookAccessService.requireAction(userId, input.bookId(), BookAction.CATEGORIES_MANAGE);
@@ -65,6 +87,14 @@ public class CategoryService {
         return toOutput(category);
     }
 
+    /**
+     * 更新分类。
+     *
+     * @param userId 用户ID
+     * @param categoryId 分类ID
+     * @param input 请求参数
+     * @return 分类输出对象
+     */
     @Transactional
     public CategoryOutDTO update(Long userId, Long categoryId, CategoryUpdateInDTO input) {
         CategoryEntity category = requireCategory(categoryId);
@@ -75,6 +105,14 @@ public class CategoryService {
         return toOutput(category);
     }
 
+    /**
+     * 设置分类的隐藏状态。
+     *
+     * @param userId 用户ID
+     * @param categoryId 分类ID
+     * @param hidden 是否启用
+     * @return 分类输出对象
+     */
     @Transactional
     public CategoryOutDTO setHidden(Long userId, Long categoryId, boolean hidden) {
         CategoryEntity category = requireCategory(categoryId);
@@ -85,6 +123,12 @@ public class CategoryService {
         return toOutput(category);
     }
 
+    /**
+     * 按指定顺序重排分类。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     */
     @Transactional
     public void sort(Long userId, CategorySortInDTO input) {
         bookAccessService.requireAction(userId, input.bookId(), BookAction.CATEGORIES_MANAGE);
@@ -99,6 +143,12 @@ public class CategoryService {
         }
     }
 
+    /**
+     * 删除分类。
+     *
+     * @param userId 用户ID
+     * @param categoryId 分类ID
+     */
     @Transactional
     public void delete(Long userId, Long categoryId) {
         CategoryEntity category = requireCategory(categoryId);
@@ -108,6 +158,12 @@ public class CategoryService {
         categoryMapper.updateById(category);
     }
 
+    /**
+     * 查询并校验分类。
+     *
+     * @param categoryId 分类ID
+     * @return 分类实体
+     */
     private CategoryEntity requireCategory(Long categoryId) {
         CategoryEntity category = categoryMapper.selectById(categoryId);
         if (category == null || category.getDeletedFlag() != 0 || !"BOOK".equals(category.getScopeType())) {
@@ -116,12 +172,24 @@ public class CategoryService {
         return category;
     }
 
+    /**
+     * 校验类型。
+     *
+     * @param type 类型
+     */
     private void validateType(String type) {
         if (type != null && !CATEGORY_TYPES.contains(type)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "分类类型不正确");
         }
     }
 
+    /**
+     * 计算下一个分类排序号。
+     *
+     * @param bookId 账本ID
+     * @param type 类型
+     * @return 下一个分类排序号
+     */
     private int nextSortNo(Long bookId, String type) {
         CategoryEntity last = categoryMapper.selectOne(Wrappers.<CategoryEntity>lambdaQuery()
                 .eq(CategoryEntity::getBookId, bookId).eq(CategoryEntity::getCategoryType, type)
@@ -129,12 +197,26 @@ public class CategoryService {
         return last == null ? 10 : last.getSortNo() + 10;
     }
 
+    /**
+     * 更新分类的显示属性。
+     *
+     * @param category 分类实体
+     * @param name 名称
+     * @param icon 分类图标
+     * @param color 显示颜色
+     */
     private void applyDisplay(CategoryEntity category, String name, String icon, String color) {
         category.setName(name.trim());
         category.setIcon(icon == null || icon.isBlank() ? "circle" : icon.trim());
         category.setColor(color == null || color.isBlank() ? "#64748B" : color.toUpperCase());
     }
 
+    /**
+     * 转换为分类输出对象。
+     *
+     * @param category 分类实体
+     * @return 分类输出对象
+     */
     private CategoryOutDTO toOutput(CategoryEntity category) {
         return new CategoryOutDTO(category.getId(), category.getCategoryNo(), category.getCategoryType(),
                 category.getParentId(), category.getName(), category.getIcon(), category.getColor(),

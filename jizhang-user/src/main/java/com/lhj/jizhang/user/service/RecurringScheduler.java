@@ -26,6 +26,13 @@ public class RecurringScheduler {
     private final BookMapper bookMapper;
     private final RecurringExecutionService executionService;
 
+    /**
+     * 初始化重复规则调度服务。
+     *
+     * @param ruleMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param executionService 关联服务
+     */
     public RecurringScheduler(RecurringRuleMapper ruleMapper, BookMapper bookMapper,
                               RecurringExecutionService executionService) {
         this.ruleMapper = ruleMapper;
@@ -33,6 +40,9 @@ public class RecurringScheduler {
         this.executionService = executionService;
     }
 
+    /**
+     * 扫描到期的重复规则并触发执行。
+     */
     @Scheduled(fixedDelayString = "${jizhang.recurring.scan-interval-ms:300000}", initialDelay = 30000)
     public void scan() {
         List<RecurringRuleEntity> candidates = ruleMapper.selectList(Wrappers.<RecurringRuleEntity>lambdaQuery()
@@ -47,6 +57,12 @@ public class RecurringScheduler {
         }
     }
 
+    /**
+     * 检查单条规则是否到期并执行。
+     *
+     * @param rule 规则实体
+     * @param now 当前时间
+     */
     private void processIfDue(RecurringRuleEntity rule, Instant now) {
         BookEntity book = bookMapper.selectById(rule.getBookId());
         if (book == null || rule.getNextExecutionDate() == null) {

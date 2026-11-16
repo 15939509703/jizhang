@@ -64,6 +64,16 @@ public class TransactionService {
     private SavingsGoalMapper savingsGoalMapper;
     private BudgetAlertNotificationService budgetAlertNotificationService;
 
+    /**
+     * 初始化账单服务。
+     *
+     * @param transactionMapper 数据访问器
+     * @param accountEntryMapper 数据访问器
+     * @param accountMapper 数据访问器
+     * @param categoryMapper 数据访问器
+     * @param bookMapper 数据访问器
+     * @param bookAccessService 关联服务
+     */
     public TransactionService(
             TransactionMapper transactionMapper,
             AccountEntryMapper accountEntryMapper,
@@ -80,6 +90,13 @@ public class TransactionService {
         this.bookAccessService = bookAccessService;
     }
 
+    /**
+     * 设置报销与储蓄关联数据访问器。
+     *
+     * @param reimbursementMapper 数据访问器
+     * @param savingsContributionMapper 数据访问器
+     * @param savingsGoalMapper 数据访问器
+     */
     @Autowired(required = false)
     void setFollowupMappers(ReimbursementMapper reimbursementMapper,
                             SavingsContributionMapper savingsContributionMapper,
@@ -89,11 +106,23 @@ public class TransactionService {
         this.savingsGoalMapper = savingsGoalMapper;
     }
 
+    /**
+     * 设置预算提醒通知服务。
+     *
+     * @param service 关联服务
+     */
     @Autowired(required = false)
     void setBudgetAlertNotificationService(BudgetAlertNotificationService service) {
         this.budgetAlertNotificationService = service;
     }
 
+    /**
+     * 创建账单。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 账单输出对象
+     */
     @Transactional
     public TransactionOutDTO create(Long userId, TransactionCreateInDTO input) {
         bookAccessService.requireWritable(userId, input.bookId());
@@ -115,6 +144,25 @@ public class TransactionService {
         return toOutput(transaction, loadEntries(List.of(transaction.getId())).get(transaction.getId()));
     }
 
+    /**
+     * 查询账单列表。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param type 类型
+     * @param status 状态
+     * @param categoryId 分类ID
+     * @param accountId 账户ID
+     * @param minAmount 最小金额
+     * @param maxAmount 最大金额
+     * @param keyword 搜索关键词
+     * @param startAt 起始时间
+     * @param endAt 结束时间
+     * @param sortBy 排序字段
+     * @param cursorId 分页游标ID
+     * @param limit 分页条数
+     * @return 账单分页结果
+     */
     public TransactionPageOutDTO list(
             Long userId,
             Long bookId,
@@ -192,6 +240,13 @@ public class TransactionService {
         return new TransactionPageOutDTO(items, nextCursor, hasMore);
     }
 
+    /**
+     * 查询账单。
+     *
+     * @param userId 用户ID
+     * @param transactionId 账单ID
+     * @return 账单输出对象
+     */
     public TransactionOutDTO get(Long userId, Long transactionId) {
         TransactionEntity transaction = transactionMapper.selectById(transactionId);
         if (transaction == null) {
@@ -206,6 +261,14 @@ public class TransactionService {
         return toVisibleOutput(transaction, entries, scope);
     }
 
+    /**
+     * 更新账单。
+     *
+     * @param userId 用户ID
+     * @param transactionId 账单ID
+     * @param input 请求参数
+     * @return 账单输出对象
+     */
     @Transactional
     public TransactionOutDTO update(Long userId, Long transactionId, TransactionUpdateInDTO input) {
         TransactionEntity transaction = transactionMapper.selectByIdForUpdate(transactionId);
@@ -237,6 +300,13 @@ public class TransactionService {
         return toOutput(transaction, loadEntries(List.of(transactionId)).get(transactionId));
     }
 
+    /**
+     * 作废账单并冲回账户流水。
+     *
+     * @param userId 用户ID
+     * @param transactionId 账单ID
+     * @return 账单输出对象
+     */
     @Transactional
     public TransactionOutDTO voidTransaction(Long userId, Long transactionId) {
         TransactionEntity transaction = transactionMapper.selectByIdForUpdate(transactionId);
@@ -268,6 +338,11 @@ public class TransactionService {
         return toOutput(transaction, loadEntries(List.of(transactionId)).get(transactionId));
     }
 
+    /**
+     * 校验关联报销记录是否允许原账单作废。
+     *
+     * @param transaction 账单实体
+     */
     private void validateFollowupVoid(TransactionEntity transaction) {
         if (reimbursementMapper == null) return;
         ReimbursementEntity reimbursement = reimbursementMapper.selectOne(Wrappers.<ReimbursementEntity>lambdaQuery()
@@ -286,6 +361,12 @@ public class TransactionService {
         }
     }
 
+    /**
+     * 同步作废账单关联的报销和储蓄记录。
+     *
+     * @param transaction 账单实体
+     * @param userId 用户ID
+     */
     private void updateFollowupAfterVoid(TransactionEntity transaction, Long userId) {
         if (reimbursementMapper != null) {
             ReimbursementEntity reimbursement = reimbursementMapper.selectOne(Wrappers.<ReimbursementEntity>lambdaQuery()
@@ -323,6 +404,11 @@ public class TransactionService {
         }
     }
 
+    /**
+     * 校验输入。
+     *
+     * @param input 请求参数
+     */
     private void validateInput(TransactionCreateInDTO input) {
         if ("TRANSFER".equals(input.transactionType())) {
             if (input.targetAccountId() == null || input.accountId().equals(input.targetAccountId())) {
@@ -336,6 +422,15 @@ public class TransactionService {
         }
     }
 
+    /**
+     * 校验查询条件。
+     *
+     * @param type 类型
+     * @param status 状态
+     * @param sortBy 排序字段
+     * @param limit 分页条数
+     * @return 有效分页条数
+     */
     private int validateQuery(String type, String status, String sortBy, Integer limit) {
         if (type != null && !TRANSACTION_TYPES.contains(type)) {
             throw new BusinessException(ErrorCodes.INVALID_PARAMETER, "账单类型不正确");
@@ -353,6 +448,12 @@ public class TransactionService {
         return pageSize;
     }
 
+    /**
+     * 校验金额范围。
+     *
+     * @param minAmount 最小金额
+     * @param maxAmount 最大金额
+     */
     private void validateAmountRange(BigDecimal minAmount, BigDecimal maxAmount) {
         if (minAmount != null && minAmount.compareTo(BigDecimal.ZERO) < 0
                 || maxAmount != null && maxAmount.compareTo(BigDecimal.ZERO) < 0) {
@@ -363,6 +464,13 @@ public class TransactionService {
         }
     }
 
+    /**
+     * 将账单更新参数转换为创建参数。
+     *
+     * @param transaction 账单实体
+     * @param input 请求参数
+     * @return 账单请求参数
+     */
     private TransactionCreateInDTO updateCommand(TransactionEntity transaction, TransactionUpdateInDTO input) {
         return new TransactionCreateInDTO(transaction.getRequestId(), transaction.getBookId(),
                 input.transactionType(), input.categoryId(), transaction.getOriginalTransactionId(),
@@ -370,6 +478,13 @@ public class TransactionService {
                 input.title(), input.note());
     }
 
+    /**
+     * 将更新参数应用到账单实体。
+     *
+     * @param transaction 账单实体
+     * @param input 请求参数
+     * @param userId 用户ID
+     */
     private void applyTransactionChanges(TransactionEntity transaction, TransactionUpdateInDTO input, Long userId) {
         transaction.setTransactionType(input.transactionType());
         transaction.setCategoryId(input.categoryId());
@@ -381,6 +496,12 @@ public class TransactionService {
         transaction.setModifier(String.valueOf(userId));
     }
 
+    /**
+     * 提取账单涉及的账户ID。
+     *
+     * @param input 请求参数
+     * @return 账单列表
+     */
     private Collection<Long> accountIds(TransactionCreateInDTO input) {
         List<Long> accountIds = new ArrayList<>();
         accountIds.add(input.accountId());
@@ -390,6 +511,13 @@ public class TransactionService {
         return accountIds;
     }
 
+    /**
+     * 锁定账单涉及的账户并校验归属。
+     *
+     * @param bookId 账本ID
+     * @param accountIds 账户ID集合
+     * @return 账单映射
+     */
     private Map<Long, AccountEntity> lockAccounts(Long bookId, Collection<Long> accountIds) {
         Map<Long, AccountEntity> accounts = new LinkedHashMap<>();
         accountIds.stream().distinct().sorted().forEach(accountId -> {
@@ -403,6 +531,11 @@ public class TransactionService {
         return accounts;
     }
 
+    /**
+     * 校验分类。
+     *
+     * @param input 请求参数
+     */
     private void validateCategory(TransactionCreateInDTO input) {
         if (input.categoryId() == null) {
             return;
@@ -415,6 +548,11 @@ public class TransactionService {
         }
     }
 
+    /**
+     * 校验原始账单引用关系。
+     *
+     * @param input 请求参数
+     */
     private void validateOriginal(TransactionCreateInDTO input) {
         if (input.originalTransactionId() == null) {
             return;
@@ -425,6 +563,14 @@ public class TransactionService {
         }
     }
 
+    /**
+     * 按幂等请求ID查找已有账单。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param requestId 幂等请求ID
+     * @return 账单实体
+     */
     private TransactionEntity findByRequestId(Long userId, Long bookId, String requestId) {
         return transactionMapper.selectOne(Wrappers.<TransactionEntity>lambdaQuery()
                 .eq(TransactionEntity::getBookId, bookId)
@@ -432,6 +578,13 @@ public class TransactionService {
                 .eq(TransactionEntity::getRequestId, requestId));
     }
 
+    /**
+     * 构建账单。
+     *
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 账单实体
+     */
     private TransactionEntity buildTransaction(Long userId, TransactionCreateInDTO input) {
         BookEntity book = bookMapper.selectById(input.bookId());
         if (book == null || book.getStatus() != 1) {
@@ -457,6 +610,14 @@ public class TransactionService {
         return transaction;
     }
 
+    /**
+     * 写入账单。
+     *
+     * @param transaction 账单实体
+     * @param userId 用户ID
+     * @param input 请求参数
+     * @return 账单实体
+     */
     private TransactionEntity insertTransaction(
             TransactionEntity transaction,
             Long userId,
@@ -474,6 +635,14 @@ public class TransactionService {
         }
     }
 
+    /**
+     * 根据账单类型写入对应账户流水。
+     *
+     * @param transaction 账单实体
+     * @param input 请求参数
+     * @param accounts 账户集合
+     * @param userId 用户ID
+     */
     private void applyEntries(
             TransactionEntity transaction,
             TransactionCreateInDTO input,
@@ -490,6 +659,15 @@ public class TransactionService {
         }
     }
 
+    /**
+     * 写入单条账户流水并更新余额。
+     *
+     * @param transaction 账单实体
+     * @param account 账户实体
+     * @param signedAmount 带符号的流水金额
+     * @param entryType 流水类型
+     * @param userId 用户ID
+     */
     private void applyEntry(
             TransactionEntity transaction,
             AccountEntity account,
@@ -504,6 +682,18 @@ public class TransactionService {
         updateAccountBalance(account, balanceAfter, userId);
     }
 
+    /**
+     * 构建流水。
+     *
+     * @param transaction 账单实体
+     * @param accountId 账户ID
+     * @param entryType 流水类型
+     * @param signedAmount 带符号的流水金额
+     * @param balanceBefore 变动前余额
+     * @param balanceAfter 变动后余额
+     * @param userId 用户ID
+     * @return 账单实体
+     */
     private AccountEntryEntity buildEntry(
             TransactionEntity transaction,
             Long accountId,
@@ -526,6 +716,13 @@ public class TransactionService {
         return entry;
     }
 
+    /**
+     * 更新账户余额。
+     *
+     * @param account 账户实体
+     * @param balanceAfter 变动后余额
+     * @param userId 用户ID
+     */
     private void updateAccountBalance(AccountEntity account, BigDecimal balanceAfter, Long userId) {
         account.setCurrentBalance(balanceAfter);
         account.setVersion(account.getVersion() + 1);
@@ -533,6 +730,12 @@ public class TransactionService {
         accountMapper.updateById(account);
     }
 
+    /**
+     * 查询原账单关联的账户流水。
+     *
+     * @param transactionId 账单ID
+     * @return 账单列表
+     */
     private List<AccountEntryEntity> originalEntries(Long transactionId) {
         return accountEntryMapper.selectList(Wrappers.<AccountEntryEntity>lambdaQuery()
                 .eq(AccountEntryEntity::getTransactionId, transactionId)
@@ -540,6 +743,14 @@ public class TransactionService {
                 .orderByAsc(AccountEntryEntity::getId));
     }
 
+    /**
+     * 冲回原账单的账户流水。
+     *
+     * @param transaction 账单实体
+     * @param entries 流水集合
+     * @param accounts 账户集合
+     * @param userId 用户ID
+     */
     private void reverseEntries(
             TransactionEntity transaction,
             List<AccountEntryEntity> entries,
@@ -553,6 +764,12 @@ public class TransactionService {
         }
     }
 
+    /**
+     * 加载流水。
+     *
+     * @param transactionIds 账单ID集合
+     * @return 账单映射
+     */
     private Map<Long, List<AccountEntryEntity>> loadEntries(List<Long> transactionIds) {
         if (transactionIds.isEmpty()) {
             return Map.of();
@@ -564,6 +781,13 @@ public class TransactionService {
                         Collectors.toList()));
     }
 
+    /**
+     * 转换为账单输出对象。
+     *
+     * @param transaction 账单实体
+     * @param entries 流水集合
+     * @return 账单输出对象
+     */
     private TransactionOutDTO toOutput(TransactionEntity transaction, List<AccountEntryEntity> entries) {
         List<TransactionEntryOutDTO> entryOutputs = entries == null ? List.of() : entries.stream()
                 .sorted(Comparator.comparing(AccountEntryEntity::getId))
@@ -591,6 +815,12 @@ public class TransactionService {
                 output.version(), List.of(), output.attachments());
     }
 
+    /**
+     * 将时间转换为 UTC 时间。
+     *
+     * @param instant 待转换时间戳
+     * @return 转换后的时间
+     */
     private LocalDateTime toUtc(Instant instant) {
         return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }

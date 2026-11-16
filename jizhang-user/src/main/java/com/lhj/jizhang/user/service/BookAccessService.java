@@ -27,16 +27,34 @@ public class BookAccessService {
     private final BookMemberMapper bookMemberMapper;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化账本访问权限服务。
+     *
+     * @param bookMemberMapper 数据访问器
+     * @param objectMapper 数据访问器
+     */
     @Autowired
     public BookAccessService(BookMemberMapper bookMemberMapper, ObjectMapper objectMapper) {
         this.bookMemberMapper = bookMemberMapper;
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 初始化账本访问权限服务。
+     *
+     * @param bookMemberMapper 数据访问器
+     */
     BookAccessService(BookMemberMapper bookMemberMapper) {
         this(bookMemberMapper, new ObjectMapper());
     }
 
+    /**
+     * 查询并校验成员。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 账本成员实体
+     */
     public BookMemberEntity requireMember(Long userId, Long bookId) {
         BookMemberEntity member = bookMemberMapper.selectOne(Wrappers.<BookMemberEntity>lambdaQuery()
                 .eq(BookMemberEntity::getBookId, bookId)
@@ -49,10 +67,24 @@ public class BookAccessService {
         return member;
     }
 
+    /**
+     * 校验用户对账本的写入权限并返回成员信息。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 账本成员实体
+     */
     public BookMemberEntity requireWritable(Long userId, Long bookId) {
         return requirePermission(userId, bookId, BookPermission.CREATE_TRANSACTIONS);
     }
 
+    /**
+     * 校验账本管理员权限并返回成员信息。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 账本成员实体
+     */
     public BookMemberEntity requireAdmin(Long userId, Long bookId) {
         BookMemberEntity member = requireMember(userId, bookId);
         if (!"OWNER".equals(member.getRole()) && !"ADMIN".equals(member.getRole())) {
@@ -65,6 +97,13 @@ public class BookAccessService {
         return member;
     }
 
+    /**
+     * 校验账本所有人权限并返回成员信息。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @return 账本成员实体
+     */
     public BookMemberEntity requireOwner(Long userId, Long bookId) {
         BookMemberEntity member = requireMember(userId, bookId);
         if (!"OWNER".equals(member.getRole())) {
@@ -74,6 +113,14 @@ public class BookAccessService {
         return member;
     }
 
+    /**
+     * 查询并校验权限。
+     *
+     * @param userId 用户ID
+     * @param bookId 账本ID
+     * @param permission 目标权限
+     * @return 账本成员实体
+     */
     public BookMemberEntity requirePermission(Long userId, Long bookId, BookPermission permission) {
         BookMemberEntity member = requireMember(userId, bookId);
         if (!hasPermission(member, permission)) {
@@ -88,6 +135,13 @@ public class BookAccessService {
         return TransactionScope.valueOf(evaluate(member).transactionScope());
     }
 
+    /**
+     * 判断是否具有权限。
+     *
+     * @param member 成员实体
+     * @param permission 目标权限
+     * @return 条件是否成立
+     */
     public boolean hasPermission(BookMemberEntity member, BookPermission permission) {
         return evaluate(member).actionPermissions().get(permission.name());
     }

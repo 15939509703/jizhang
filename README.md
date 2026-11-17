@@ -115,6 +115,7 @@ http://127.0.0.1:8081/v3/api-docs
 ```
 
 调用受保护接口时，在Swagger UI的`Authorize`中填写JWT Access Token。
+生产环境默认关闭文档端点。systemd 部署可在服务环境文件中设置`SWAGGER_ENABLED=true`；Docker Compose 部署需修改对应服务的`SWAGGER_ENABLED`环境项，随后重启服务。
 
 ## 登录接口
 

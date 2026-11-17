@@ -21,7 +21,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("记账小程序后端 API")
-                        .description("记账小程序登录、账本、分类、账户和账单接口")
+                        .description("记账小程序登录认证、账本、账单、预算、资产和协作等业务接口")
                         .version("v1"))
                 .components(new Components().addSecuritySchemes(BEARER_AUTH, bearerAuth));
     }

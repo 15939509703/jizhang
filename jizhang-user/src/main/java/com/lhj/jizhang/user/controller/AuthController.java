@@ -20,6 +20,8 @@ import com.lhj.jizhang.user.service.PhoneRegistrationService;
 import com.lhj.jizhang.user.service.WechatLoginService;
 import com.lhj.jizhang.user.client.WechatPhoneClient;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,7 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import com.lhj.jizhang.security.model.AuthenticatedUser;
 
-@Tag(name = "登录认证", description = "微信小程序登录与用户初始化")
+@Tag(name = "登录认证", description = "微信、手机号和密码登录及凭证管理")
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
@@ -78,9 +80,10 @@ public class AuthController {
     }
 
     @Operation(summary = "为已核验手机号设置或修改登录密码")
+    @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/phone/bind")
     public ApiResponse<Void> bindPhone(
-            @AuthenticationPrincipal AuthenticatedUser user,
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody @Valid PhoneBindInDTO input
     ) {
         phoneBindingService.bind(user.userId(), input);
@@ -89,9 +92,10 @@ public class AuthController {
 
     /** 用户主动授权微信手机号后，将其核验并关联到当前账号。 */
     @Operation(summary = "验证并绑定微信手机号")
+    @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/phone/verify")
     public ApiResponse<PhoneBindingOutDTO> verifyPhone(
-            @AuthenticationPrincipal AuthenticatedUser user,
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody @Valid WechatPhoneCodeInDTO input
     ) {
         String phone = wechatPhoneClient.exchangeCode(input.code());
@@ -100,17 +104,19 @@ public class AuthController {
     }
 
     @Operation(summary = "查询手机号绑定状态")
+    @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/phone/bind/status")
     public ApiResponse<PhoneBindingOutDTO> phoneBindingStatus(
-            @AuthenticationPrincipal AuthenticatedUser user
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user
     ) {
         return ApiResponse.success(phoneBindingService.status(user.userId()));
     }
 
     @Operation(summary = "绑定或更新网页登录凭证")
+    @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/password/bind")
     public ApiResponse<Void> bindPassword(
-            @AuthenticationPrincipal AuthenticatedUser user,
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody @Valid PasswordCredentialInDTO input
     ) {
         phoneBindingService.assertUsernameUnchanged(user.userId(), input.username());
